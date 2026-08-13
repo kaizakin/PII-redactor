@@ -1,0 +1,46 @@
+syntax = "proto3";
+
+// package redactor defines the contract between the Go engine
+// (internal/grpcclient) and the Python NLP worker responsible for
+// unstructured PII: person names, company names, and physical addresses.
+//
+// This schema is a forward-looking reference for the next phase of the
+// project (the Python worker itself and generated stubs under proto/gen/
+// are not part of this phase). internal/grpcclient.NLPClient mirrors this
+// contract by hand today, backed by grpcclient.NoOpClient, so the Go engine
+// already runs correctly end to end. Once the Python worker exists, this
+// file becomes the source of truth: run protoc for both languages, point
+// the generated Go client at NLPServiceClient, and NLPDetector (internal/
+// detector/nlp.go) starts reporting real matches with no other changes.
+package redactor;
+
+option go_package = "github.com/kaizakin/PII-redactor/proto/gen/redactor";
+
+// NLPService analyzes free text for unstructured PII entities using
+// Named Entity Recognition (e.g. Microsoft Presidio or a HuggingFace
+// transformer model).
+service NLPService {
+  rpc Analyze(AnalyzeRequest) returns (AnalyzeResponse);
+}
+
+message AnalyzeRequest {
+  string text = 1;
+}
+
+message AnalyzeResponse {
+  repeated Entity entities = 1;
+}
+
+// Entity mirrors internal/grpcclient.Entity: a single unstructured PII
+// span found in the analyzed text.
+message Entity {
+  // type is the entity label, e.g. "PERSON", "ORG", "ADDRESS". These are
+  // the same labels internal/detector.NLPDetector filters on.
+  string type = 1;
+  // start and end are byte offsets into the text field of AnalyzeRequest,
+  // matching the convention used by detector.Match in the Go engine.
+  int32 start = 2;
+  int32 end = 3;
+  string text = 4;
+  double confidence = 5;
+}
