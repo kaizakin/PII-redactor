@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isDocxFileName, redactedFilename } from "../../lib/files";
 
 export const runtime = "nodejs";
-
-const MAX_UPLOAD_BYTES = 64 * 1024 * 1024;
 
 function serviceEndpoint() {
   const baseUrl = process.env.GO_SERVICE_URL;
@@ -11,13 +10,6 @@ function serviceEndpoint() {
   }
 
   return new URL("/redact/docx", baseUrl).toString();
-}
-
-function redactedFilename(originalName: string) {
-  const safeName = originalName.replace(/[^\w.-]+/g, "_");
-  return safeName.toLowerCase().endsWith(".docx")
-    ? safeName.replace(/\.docx$/i, "-redacted.docx")
-    : "redacted.docx";
 }
 
 export async function POST(request: NextRequest) {
@@ -40,16 +32,9 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (!file.name.toLowerCase().endsWith(".docx")) {
+  if (!isDocxFileName(file.name)) {
     return NextResponse.json(
       { error: "Only .docx files are supported." },
-      { status: 400 },
-    );
-  }
-
-  if (file.size > MAX_UPLOAD_BYTES) {
-    return NextResponse.json(
-      { error: "File is too large. Please upload a file under 64 MB." },
       { status: 400 },
     );
   }

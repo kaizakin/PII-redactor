@@ -9,6 +9,7 @@ import {
   X,
 } from "lucide-react";
 import { ChangeEvent, DragEvent, FormEvent, useMemo, useState } from "react";
+import { isDocxFileName, redactedFilename } from "./lib/files";
 
 type UploadState = "idle" | "ready" | "uploading" | "done" | "error";
 
@@ -40,7 +41,7 @@ export default function Home() {
       return;
     }
 
-    if (!nextFile.name.toLowerCase().endsWith(".docx")) {
+    if (!isDocxFileName(nextFile.name)) {
       setFile(null);
       setState("error");
       setError("Please choose a .docx file.");
@@ -84,7 +85,7 @@ export default function Home() {
 
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
-      const filename = file.name.replace(/\.docx$/i, "-redacted.docx");
+      const filename = redactedFilename(file.name);
       setDownloadUrl(url);
       setDownloadName(filename);
       setState("done");
