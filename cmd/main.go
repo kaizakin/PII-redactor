@@ -22,6 +22,12 @@ import (
 // is configured. Until it is, NoOpClient keeps the unstructured detectors
 // registered but inert, so the engine still runs correctly with
 // structured detection alone.
+//
+// The client is wrapped in DedupingClient because three separate
+// NLPDetector instances (PERSON, ORG, ADDRESS — see buildDetectors below)
+// share it and the processor runs all detectors concurrently: without
+// deduping, redacting one run of text would fire three identical Analyze
+// calls at the worker instead of one, tripling load for no benefit.
 func buildNLPClient(cfg config.Config) grpcclient.NLPClient {
 	if cfg.NLPWorkerAddr == "" {
 		log.Print("NLP_WORKER_ADDR not set: unstructured PII (names, companies, addresses) will not be detected")
@@ -32,7 +38,7 @@ func buildNLPClient(cfg config.Config) grpcclient.NLPClient {
 		log.Fatalf("failed to connect to NLP worker at %s: %v", cfg.NLPWorkerAddr, err)
 	}
 	log.Printf("connected to NLP worker at %s", cfg.NLPWorkerAddr)
-	return client
+	return grpcclient.NewDedupingClient(client)
 }
 
 // buildDetectors assembles the active set of Detector strategies. This is
