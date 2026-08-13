@@ -1,0 +1,11 @@
+grpcio==1.83.0
+grpcio-tools==1.83.0
+presidio-analyzer==2.2.364
+spacy==3.8.15
+
+# spaCy's small English pipeline. Not on PyPI proper — installed as a
+# direct wheel URL, which pip handles like any other dependency. Swapping
+# this for en_core_web_lg (higher accuracy, larger download) or a
+# transformer-based pipeline is the only change needed to upgrade the NLP
+# model; nothing else in this service or the Go engine changes.
+https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl

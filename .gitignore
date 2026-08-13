@@ -5,3 +5,8 @@
 *.out
 .env
 .DS_Store
+
+# Python
+python-worker/.venv/
+__pycache__/
+*.pyc
