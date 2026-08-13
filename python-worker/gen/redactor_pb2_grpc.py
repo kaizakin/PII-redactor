@@ -26,10 +26,7 @@ if _version_not_supported:
 
 
 class NLPServiceStub:
-    """NLPService analyzes free text for unstructured PII entities using
-    Named Entity Recognition (e.g. Microsoft Presidio or a HuggingFace
-    transformer model).
-    """
+    """Missing associated documentation comment in .proto file."""
 
     def __init__(self, channel):
         """Constructor.
@@ -42,16 +39,29 @@ class NLPServiceStub:
                 request_serializer=redactor__pb2.AnalyzeRequest.SerializeToString,
                 response_deserializer=redactor__pb2.AnalyzeResponse.FromString,
                 _registered_method=True)
+        self.RedactImage = channel.unary_unary(
+                '/redactor.NLPService/RedactImage',
+                request_serializer=redactor__pb2.RedactImageRequest.SerializeToString,
+                response_deserializer=redactor__pb2.RedactImageResponse.FromString,
+                _registered_method=True)
 
 
 class NLPServiceServicer:
-    """NLPService analyzes free text for unstructured PII entities using
-    Named Entity Recognition (e.g. Microsoft Presidio or a HuggingFace
-    transformer model).
-    """
+    """Missing associated documentation comment in .proto file."""
 
     def Analyze(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Analyze finds unstructured PII entities (names, companies, addresses)
+        in free text using Named Entity Recognition.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RedactImage(self, request, context):
+        """RedactImage finds PII in an image via OCR and returns the image with
+        solid black boxes drawn over the matched regions — never blurred or
+        pixelated, since both are reconstructible.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -64,6 +74,11 @@ def add_NLPServiceServicer_to_server(servicer, server):
                     request_deserializer=redactor__pb2.AnalyzeRequest.FromString,
                     response_serializer=redactor__pb2.AnalyzeResponse.SerializeToString,
             ),
+            'RedactImage': grpc.unary_unary_rpc_method_handler(
+                    servicer.RedactImage,
+                    request_deserializer=redactor__pb2.RedactImageRequest.FromString,
+                    response_serializer=redactor__pb2.RedactImageResponse.SerializeToString,
+            ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
             'redactor.NLPService', rpc_method_handlers)
@@ -73,10 +88,7 @@ def add_NLPServiceServicer_to_server(servicer, server):
 
  # This class is part of an EXPERIMENTAL API.
 class NLPService:
-    """NLPService analyzes free text for unstructured PII entities using
-    Named Entity Recognition (e.g. Microsoft Presidio or a HuggingFace
-    transformer model).
-    """
+    """Missing associated documentation comment in .proto file."""
 
     @staticmethod
     def Analyze(request,
@@ -95,6 +107,33 @@ class NLPService:
             '/redactor.NLPService/Analyze',
             redactor__pb2.AnalyzeRequest.SerializeToString,
             redactor__pb2.AnalyzeResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RedactImage(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/redactor.NLPService/RedactImage',
+            redactor__pb2.RedactImageRequest.SerializeToString,
+            redactor__pb2.RedactImageResponse.FromString,
             options,
             channel_credentials,
             insecure,

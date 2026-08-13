@@ -4,18 +4,13 @@
 // 	protoc        v7.35.1
 // source: redactor.proto
 
-// package redactor defines the contract between the Go engine
-// (internal/grpcclient) and the Python NLP worker responsible for
-// unstructured PII: person names, company names, and physical addresses.
+// package redactor is the contract between the Go engine
+// (internal/grpcclient) and the Python NLP worker (python-worker/):
+// unstructured text PII (Analyze) and PII embedded in images, such as
+// scanned IDs or screenshots (RedactImage).
 //
-// This schema is a forward-looking reference for the next phase of the
-// project (the Python worker itself and generated stubs under proto/gen/
-// are not part of this phase). internal/grpcclient.NLPClient mirrors this
-// contract by hand today, backed by grpcclient.NoOpClient, so the Go engine
-// already runs correctly end to end. Once the Python worker exists, this
-// file becomes the source of truth: run protoc for both languages, point
-// the generated Go client at NLPServiceClient, and NLPDetector (internal/
-// detector/nlp.go) starts reporting real matches with no other changes.
+// After editing this file, regenerate both languages' stubs — see
+// the "Regenerating the gRPC contract" section in the repo README.
 
 package redactor
 
@@ -204,6 +199,116 @@ func (x *Entity) GetConfidence() float64 {
 	return 0
 }
 
+type RedactImageRequest struct {
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	ImageData []byte                 `protobuf:"bytes,1,opt,name=image_data,json=imageData,proto3" json:"image_data,omitempty"`
+	// format is a lowercase image format hint ("png", "jpeg", "bmp", ...)
+	// matching domain.ImageFormat values on the Go side (docxgo).
+	Format        string `protobuf:"bytes,2,opt,name=format,proto3" json:"format,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RedactImageRequest) Reset() {
+	*x = RedactImageRequest{}
+	mi := &file_redactor_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RedactImageRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RedactImageRequest) ProtoMessage() {}
+
+func (x *RedactImageRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_redactor_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RedactImageRequest.ProtoReflect.Descriptor instead.
+func (*RedactImageRequest) Descriptor() ([]byte, []int) {
+	return file_redactor_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *RedactImageRequest) GetImageData() []byte {
+	if x != nil {
+		return x.ImageData
+	}
+	return nil
+}
+
+func (x *RedactImageRequest) GetFormat() string {
+	if x != nil {
+		return x.Format
+	}
+	return ""
+}
+
+type RedactImageResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// image_data is the same image, re-encoded in the same format, with
+	// every detected PII region blacked out. Unchanged (byte-identical)
+	// if no PII was found.
+	ImageData []byte `protobuf:"bytes,1,opt,name=image_data,json=imageData,proto3" json:"image_data,omitempty"`
+	// redactions is how many regions were blacked out.
+	Redactions    int32 `protobuf:"varint,2,opt,name=redactions,proto3" json:"redactions,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RedactImageResponse) Reset() {
+	*x = RedactImageResponse{}
+	mi := &file_redactor_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RedactImageResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RedactImageResponse) ProtoMessage() {}
+
+func (x *RedactImageResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_redactor_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RedactImageResponse.ProtoReflect.Descriptor instead.
+func (*RedactImageResponse) Descriptor() ([]byte, []int) {
+	return file_redactor_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *RedactImageResponse) GetImageData() []byte {
+	if x != nil {
+		return x.ImageData
+	}
+	return nil
+}
+
+func (x *RedactImageResponse) GetRedactions() int32 {
+	if x != nil {
+		return x.Redactions
+	}
+	return 0
+}
+
 var File_redactor_proto protoreflect.FileDescriptor
 
 const file_redactor_proto_rawDesc = "" +
@@ -220,10 +325,21 @@ const file_redactor_proto_rawDesc = "" +
 	"\x04text\x18\x04 \x01(\tR\x04text\x12\x1e\n" +
 	"\n" +
 	"confidence\x18\x05 \x01(\x01R\n" +
-	"confidence2L\n" +
+	"confidence\"K\n" +
+	"\x12RedactImageRequest\x12\x1d\n" +
+	"\n" +
+	"image_data\x18\x01 \x01(\fR\timageData\x12\x16\n" +
+	"\x06format\x18\x02 \x01(\tR\x06format\"T\n" +
+	"\x13RedactImageResponse\x12\x1d\n" +
+	"\n" +
+	"image_data\x18\x01 \x01(\fR\timageData\x12\x1e\n" +
+	"\n" +
+	"redactions\x18\x02 \x01(\x05R\n" +
+	"redactions2\x98\x01\n" +
 	"\n" +
 	"NLPService\x12>\n" +
-	"\aAnalyze\x12\x18.redactor.AnalyzeRequest\x1a\x19.redactor.AnalyzeResponseB5Z3github.com/kaizakin/PII-redactor/proto/gen/redactorb\x06proto3"
+	"\aAnalyze\x12\x18.redactor.AnalyzeRequest\x1a\x19.redactor.AnalyzeResponse\x12J\n" +
+	"\vRedactImage\x12\x1c.redactor.RedactImageRequest\x1a\x1d.redactor.RedactImageResponseB5Z3github.com/kaizakin/PII-redactor/proto/gen/redactorb\x06proto3"
 
 var (
 	file_redactor_proto_rawDescOnce sync.Once
@@ -237,18 +353,22 @@ func file_redactor_proto_rawDescGZIP() []byte {
 	return file_redactor_proto_rawDescData
 }
 
-var file_redactor_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_redactor_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_redactor_proto_goTypes = []any{
-	(*AnalyzeRequest)(nil),  // 0: redactor.AnalyzeRequest
-	(*AnalyzeResponse)(nil), // 1: redactor.AnalyzeResponse
-	(*Entity)(nil),          // 2: redactor.Entity
+	(*AnalyzeRequest)(nil),      // 0: redactor.AnalyzeRequest
+	(*AnalyzeResponse)(nil),     // 1: redactor.AnalyzeResponse
+	(*Entity)(nil),              // 2: redactor.Entity
+	(*RedactImageRequest)(nil),  // 3: redactor.RedactImageRequest
+	(*RedactImageResponse)(nil), // 4: redactor.RedactImageResponse
 }
 var file_redactor_proto_depIdxs = []int32{
 	2, // 0: redactor.AnalyzeResponse.entities:type_name -> redactor.Entity
 	0, // 1: redactor.NLPService.Analyze:input_type -> redactor.AnalyzeRequest
-	1, // 2: redactor.NLPService.Analyze:output_type -> redactor.AnalyzeResponse
-	2, // [2:3] is the sub-list for method output_type
-	1, // [1:2] is the sub-list for method input_type
+	3, // 2: redactor.NLPService.RedactImage:input_type -> redactor.RedactImageRequest
+	1, // 3: redactor.NLPService.Analyze:output_type -> redactor.AnalyzeResponse
+	4, // 4: redactor.NLPService.RedactImage:output_type -> redactor.RedactImageResponse
+	3, // [3:5] is the sub-list for method output_type
+	1, // [1:3] is the sub-list for method input_type
 	1, // [1:1] is the sub-list for extension type_name
 	1, // [1:1] is the sub-list for extension extendee
 	0, // [0:1] is the sub-list for field type_name
@@ -265,7 +385,7 @@ func file_redactor_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_redactor_proto_rawDesc), len(file_redactor_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   3,
+			NumMessages:   5,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

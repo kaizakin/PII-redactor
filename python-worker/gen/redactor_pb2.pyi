@@ -31,3 +31,19 @@ class Entity(_message.Message):
     text: str
     confidence: float
     def __init__(self, type: _Optional[str] = ..., start: _Optional[int] = ..., end: _Optional[int] = ..., text: _Optional[str] = ..., confidence: _Optional[float] = ...) -> None: ...
+
+class RedactImageRequest(_message.Message):
+    __slots__ = ("image_data", "format")
+    IMAGE_DATA_FIELD_NUMBER: _ClassVar[int]
+    FORMAT_FIELD_NUMBER: _ClassVar[int]
+    image_data: bytes
+    format: str
+    def __init__(self, image_data: _Optional[bytes] = ..., format: _Optional[str] = ...) -> None: ...
+
+class RedactImageResponse(_message.Message):
+    __slots__ = ("image_data", "redactions")
+    IMAGE_DATA_FIELD_NUMBER: _ClassVar[int]
+    REDACTIONS_FIELD_NUMBER: _ClassVar[int]
+    image_data: bytes
+    redactions: int
+    def __init__(self, image_data: _Optional[bytes] = ..., redactions: _Optional[int] = ...) -> None: ...

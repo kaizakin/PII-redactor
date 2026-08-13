@@ -4,18 +4,13 @@
 // - protoc             v7.35.1
 // source: redactor.proto
 
-// package redactor defines the contract between the Go engine
-// (internal/grpcclient) and the Python NLP worker responsible for
-// unstructured PII: person names, company names, and physical addresses.
+// package redactor is the contract between the Go engine
+// (internal/grpcclient) and the Python NLP worker (python-worker/):
+// unstructured text PII (Analyze) and PII embedded in images, such as
+// scanned IDs or screenshots (RedactImage).
 //
-// This schema is a forward-looking reference for the next phase of the
-// project (the Python worker itself and generated stubs under proto/gen/
-// are not part of this phase). internal/grpcclient.NLPClient mirrors this
-// contract by hand today, backed by grpcclient.NoOpClient, so the Go engine
-// already runs correctly end to end. Once the Python worker exists, this
-// file becomes the source of truth: run protoc for both languages, point
-// the generated Go client at NLPServiceClient, and NLPDetector (internal/
-// detector/nlp.go) starts reporting real matches with no other changes.
+// After editing this file, regenerate both languages' stubs — see
+// the "Regenerating the gRPC contract" section in the repo README.
 
 package redactor
 
@@ -32,18 +27,21 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	NLPService_Analyze_FullMethodName = "/redactor.NLPService/Analyze"
+	NLPService_Analyze_FullMethodName     = "/redactor.NLPService/Analyze"
+	NLPService_RedactImage_FullMethodName = "/redactor.NLPService/RedactImage"
 )
 
 // NLPServiceClient is the client API for NLPService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
-//
-// NLPService analyzes free text for unstructured PII entities using
-// Named Entity Recognition (e.g. Microsoft Presidio or a HuggingFace
-// transformer model).
 type NLPServiceClient interface {
+	// Analyze finds unstructured PII entities (names, companies, addresses)
+	// in free text using Named Entity Recognition.
 	Analyze(ctx context.Context, in *AnalyzeRequest, opts ...grpc.CallOption) (*AnalyzeResponse, error)
+	// RedactImage finds PII in an image via OCR and returns the image with
+	// solid black boxes drawn over the matched regions — never blurred or
+	// pixelated, since both are reconstructible.
+	RedactImage(ctx context.Context, in *RedactImageRequest, opts ...grpc.CallOption) (*RedactImageResponse, error)
 }
 
 type nLPServiceClient struct {
@@ -64,15 +62,27 @@ func (c *nLPServiceClient) Analyze(ctx context.Context, in *AnalyzeRequest, opts
 	return out, nil
 }
 
+func (c *nLPServiceClient) RedactImage(ctx context.Context, in *RedactImageRequest, opts ...grpc.CallOption) (*RedactImageResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RedactImageResponse)
+	err := c.cc.Invoke(ctx, NLPService_RedactImage_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // NLPServiceServer is the server API for NLPService service.
 // All implementations must embed UnimplementedNLPServiceServer
 // for forward compatibility.
-//
-// NLPService analyzes free text for unstructured PII entities using
-// Named Entity Recognition (e.g. Microsoft Presidio or a HuggingFace
-// transformer model).
 type NLPServiceServer interface {
+	// Analyze finds unstructured PII entities (names, companies, addresses)
+	// in free text using Named Entity Recognition.
 	Analyze(context.Context, *AnalyzeRequest) (*AnalyzeResponse, error)
+	// RedactImage finds PII in an image via OCR and returns the image with
+	// solid black boxes drawn over the matched regions — never blurred or
+	// pixelated, since both are reconstructible.
+	RedactImage(context.Context, *RedactImageRequest) (*RedactImageResponse, error)
 	mustEmbedUnimplementedNLPServiceServer()
 }
 
@@ -85,6 +95,9 @@ type UnimplementedNLPServiceServer struct{}
 
 func (UnimplementedNLPServiceServer) Analyze(context.Context, *AnalyzeRequest) (*AnalyzeResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Analyze not implemented")
+}
+func (UnimplementedNLPServiceServer) RedactImage(context.Context, *RedactImageRequest) (*RedactImageResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RedactImage not implemented")
 }
 func (UnimplementedNLPServiceServer) mustEmbedUnimplementedNLPServiceServer() {}
 func (UnimplementedNLPServiceServer) testEmbeddedByValue()                    {}
@@ -125,6 +138,24 @@ func _NLPService_Analyze_Handler(srv interface{}, ctx context.Context, dec func(
 	return interceptor(ctx, in, info, handler)
 }
 
+func _NLPService_RedactImage_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RedactImageRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NLPServiceServer).RedactImage(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NLPService_RedactImage_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NLPServiceServer).RedactImage(ctx, req.(*RedactImageRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // NLPService_ServiceDesc is the grpc.ServiceDesc for NLPService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -135,6 +166,10 @@ var NLPService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Analyze",
 			Handler:    _NLPService_Analyze_Handler,
+		},
+		{
+			MethodName: "RedactImage",
+			Handler:    _NLPService_RedactImage_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

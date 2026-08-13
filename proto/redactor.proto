@@ -1,26 +1,25 @@
 syntax = "proto3";
 
-// package redactor defines the contract between the Go engine
-// (internal/grpcclient) and the Python NLP worker responsible for
-// unstructured PII: person names, company names, and physical addresses.
+// package redactor is the contract between the Go engine
+// (internal/grpcclient) and the Python NLP worker (python-worker/):
+// unstructured text PII (Analyze) and PII embedded in images, such as
+// scanned IDs or screenshots (RedactImage).
 //
-// This schema is a forward-looking reference for the next phase of the
-// project (the Python worker itself and generated stubs under proto/gen/
-// are not part of this phase). internal/grpcclient.NLPClient mirrors this
-// contract by hand today, backed by grpcclient.NoOpClient, so the Go engine
-// already runs correctly end to end. Once the Python worker exists, this
-// file becomes the source of truth: run protoc for both languages, point
-// the generated Go client at NLPServiceClient, and NLPDetector (internal/
-// detector/nlp.go) starts reporting real matches with no other changes.
+// After editing this file, regenerate both languages' stubs — see
+// the "Regenerating the gRPC contract" section in the repo README.
 package redactor;
 
 option go_package = "github.com/kaizakin/PII-redactor/proto/gen/redactor";
 
-// NLPService analyzes free text for unstructured PII entities using
-// Named Entity Recognition (e.g. Microsoft Presidio or a HuggingFace
-// transformer model).
 service NLPService {
+  // Analyze finds unstructured PII entities (names, companies, addresses)
+  // in free text using Named Entity Recognition.
   rpc Analyze(AnalyzeRequest) returns (AnalyzeResponse);
+
+  // RedactImage finds PII in an image via OCR and returns the image with
+  // solid black boxes drawn over the matched regions — never blurred or
+  // pixelated, since both are reconstructible.
+  rpc RedactImage(RedactImageRequest) returns (RedactImageResponse);
 }
 
 message AnalyzeRequest {
@@ -43,4 +42,20 @@ message Entity {
   int32 end = 3;
   string text = 4;
   double confidence = 5;
+}
+
+message RedactImageRequest {
+  bytes image_data = 1;
+  // format is a lowercase image format hint ("png", "jpeg", "bmp", ...)
+  // matching domain.ImageFormat values on the Go side (docxgo).
+  string format = 2;
+}
+
+message RedactImageResponse {
+  // image_data is the same image, re-encoded in the same format, with
+  // every detected PII region blacked out. Unchanged (byte-identical)
+  // if no PII was found.
+  bytes image_data = 1;
+  // redactions is how many regions were blacked out.
+  int32 redactions = 2;
 }

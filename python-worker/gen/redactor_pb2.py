@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0eredactor.proto\x12\x08redactor\"\x1e\n\x0e\x41nalyzeRequest\x12\x0c\n\x04text\x18\x01 \x01(\t\"5\n\x0f\x41nalyzeResponse\x12\"\n\x08\x65ntities\x18\x01 \x03(\x0b\x32\x10.redactor.Entity\"T\n\x06\x45ntity\x12\x0c\n\x04type\x18\x01 \x01(\t\x12\r\n\x05start\x18\x02 \x01(\x05\x12\x0b\n\x03\x65nd\x18\x03 \x01(\x05\x12\x0c\n\x04text\x18\x04 \x01(\t\x12\x12\n\nconfidence\x18\x05 \x01(\x01\x32L\n\nNLPService\x12>\n\x07\x41nalyze\x12\x18.redactor.AnalyzeRequest\x1a\x19.redactor.AnalyzeResponseB5Z3github.com/kaizakin/PII-redactor/proto/gen/redactorb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0eredactor.proto\x12\x08redactor\"\x1e\n\x0e\x41nalyzeRequest\x12\x0c\n\x04text\x18\x01 \x01(\t\"5\n\x0f\x41nalyzeResponse\x12\"\n\x08\x65ntities\x18\x01 \x03(\x0b\x32\x10.redactor.Entity\"T\n\x06\x45ntity\x12\x0c\n\x04type\x18\x01 \x01(\t\x12\r\n\x05start\x18\x02 \x01(\x05\x12\x0b\n\x03\x65nd\x18\x03 \x01(\x05\x12\x0c\n\x04text\x18\x04 \x01(\t\x12\x12\n\nconfidence\x18\x05 \x01(\x01\"8\n\x12RedactImageRequest\x12\x12\n\nimage_data\x18\x01 \x01(\x0c\x12\x0e\n\x06\x66ormat\x18\x02 \x01(\t\"=\n\x13RedactImageResponse\x12\x12\n\nimage_data\x18\x01 \x01(\x0c\x12\x12\n\nredactions\x18\x02 \x01(\x05\x32\x98\x01\n\nNLPService\x12>\n\x07\x41nalyze\x12\x18.redactor.AnalyzeRequest\x1a\x19.redactor.AnalyzeResponse\x12J\n\x0bRedactImage\x12\x1c.redactor.RedactImageRequest\x1a\x1d.redactor.RedactImageResponseB5Z3github.com/kaizakin/PII-redactor/proto/gen/redactorb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -38,6 +38,10 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_ANALYZERESPONSE']._serialized_end=113
   _globals['_ENTITY']._serialized_start=115
   _globals['_ENTITY']._serialized_end=199
-  _globals['_NLPSERVICE']._serialized_start=201
-  _globals['_NLPSERVICE']._serialized_end=277
+  _globals['_REDACTIMAGEREQUEST']._serialized_start=201
+  _globals['_REDACTIMAGEREQUEST']._serialized_end=257
+  _globals['_REDACTIMAGERESPONSE']._serialized_start=259
+  _globals['_REDACTIMAGERESPONSE']._serialized_end=320
+  _globals['_NLPSERVICE']._serialized_start=323
+  _globals['_NLPSERVICE']._serialized_end=475
 # @@protoc_insertion_point(module_scope)
