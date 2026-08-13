@@ -25,6 +25,17 @@ SUPPORTED_ENTITIES = ["PERSON", "ORG", "ADDRESS"]
 # project is built around.
 DEFAULT_MODEL = "en_core_web_sm"
 
+# spaCy's NER tags plenty of things we never asked about (numbers, dates,
+# money amounts, ...). Presidio has no default entity mapping for these
+# and logs a WARNING per occurrence, which is pure noise here since we
+# only ever request PERSON/ORG/ADDRESS — silence it at the source instead
+# of drowning real log output.
+_IGNORED_NER_LABELS = [
+    "CARDINAL", "ORDINAL", "MONEY", "QUANTITY", "PERCENT",
+    "TIME", "DATE", "LANGUAGE", "WORK_OF_ART", "EVENT", "LAW",
+    "FAC", "PRODUCT",
+]
+
 
 @dataclass(frozen=True)
 class Entity:
@@ -58,6 +69,7 @@ class PresidioAnalyzer:
             nlp_configuration={
                 "nlp_engine_name": "spacy",
                 "models": [{"lang_code": "en", "model_name": model_name}],
+                "ner_model_configuration": {"labels_to_ignore": _IGNORED_NER_LABELS},
             }
         ).create_engine()
 
