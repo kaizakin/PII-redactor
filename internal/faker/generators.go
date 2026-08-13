@@ -28,3 +28,16 @@ func IPv4(f *gofakeit.Faker) string { return f.IPv4Address() }
 
 // DateOfBirth generates a fake date formatted as MM/DD/YYYY.
 func DateOfBirth(f *gofakeit.Faker) string { return f.Date().Format("01/02/2006") }
+
+// PersonName generates a fake full name, for the NLP worker's PERSON
+// entities.
+func PersonName(f *gofakeit.Faker) string { return f.Name() }
+
+// Company generates a fake company name, for the NLP worker's ORG
+// entities.
+func Company(f *gofakeit.Faker) string { return f.Company() }
+
+// Address generates a fake street address (number, street name, and
+// street type — no city/state/zip), matching the shape AddressRecognizer
+// looks for on the NLP worker side.
+func Address(f *gofakeit.Faker) string { return f.Address().Street }

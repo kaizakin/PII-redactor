@@ -113,6 +113,7 @@ func TestDefaultGenerators(t *testing.T) {
 	for _, typ := range []detector.PIIType{
 		detector.TypeEmail, detector.TypePhone, detector.TypeSSN,
 		detector.TypeCreditCard, detector.TypeIPAddress, detector.TypeDOB,
+		detector.TypeName, detector.TypeCompany, detector.TypeAddress,
 	} {
 		if _, ok := gens[typ]; !ok {
 			t.Errorf("expected a default generator registered for %s", typ)
