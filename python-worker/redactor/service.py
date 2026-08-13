@@ -4,6 +4,7 @@ analyzer itself never depends on protobuf types.
 """
 
 import logging
+import time
 
 import grpc
 
@@ -19,12 +20,26 @@ class NLPService(redactor_pb2_grpc.NLPServiceServicer):
         self._analyzer = analyzer
 
     def Analyze(self, request, context):
+        start = time.monotonic()
+        logger.info("received analyze request: %d chars", len(request.text))
+
         try:
             entities = self._analyzer.analyze(request.text)
         except Exception:
-            logger.exception("analysis failed for a %d-character request", len(request.text))
+            logger.exception(
+                "analysis failed after %.1fms for a %d-character request",
+                (time.monotonic() - start) * 1000,
+                len(request.text),
+            )
             context.abort(grpc.StatusCode.INTERNAL, "analysis failed")
             return redactor_pb2.AnalyzeResponse()
+
+        logger.info(
+            "found %d entities (%s) in %.1fms",
+            len(entities),
+            ", ".join(e.type for e in entities) or "none",
+            (time.monotonic() - start) * 1000,
+        )
 
         return redactor_pb2.AnalyzeResponse(
             entities=[

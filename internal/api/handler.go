@@ -3,10 +3,12 @@ package api
 
 import (
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/kaizakin/PII-redactor/internal/detector"
 	"github.com/kaizakin/PII-redactor/internal/docxio"
@@ -46,29 +48,31 @@ func (h *Handler) newProcessor() *processor.Processor {
 // back as the response body.
 func (h *Handler) RedactDocx(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		httpError(w, http.StatusMethodNotAllowed, "method not allowed", "got %s, want POST", r.Method)
 		return
 	}
 
 	if err := r.ParseMultipartForm(maxUploadSize); err != nil {
-		http.Error(w, "invalid multipart form", http.StatusBadRequest)
+		httpError(w, http.StatusBadRequest, "invalid multipart form", "ParseMultipartForm: %v", err)
 		return
 	}
 	file, header, err := r.FormFile("file")
 	if err != nil {
-		http.Error(w, "form field \"file\" is required", http.StatusBadRequest)
+		httpError(w, http.StatusBadRequest, "form field \"file\" is required", "FormFile: %v", err)
 		return
 	}
 	defer file.Close()
 
+	log.Printf("redact/docx: received %q (%d bytes)", header.Filename, header.Size)
+
 	if !strings.EqualFold(filepath.Ext(header.Filename), ".docx") {
-		http.Error(w, "only .docx files are supported", http.StatusBadRequest)
+		httpError(w, http.StatusBadRequest, "only .docx files are supported", "rejected non-.docx upload %q", header.Filename)
 		return
 	}
 
 	tmpDir, err := os.MkdirTemp("", "pii-redactor-*")
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		httpError(w, http.StatusInternalServerError, "internal error", "MkdirTemp: %v", err)
 		return
 	}
 	defer os.RemoveAll(tmpDir)
@@ -77,9 +81,12 @@ func (h *Handler) RedactDocx(w http.ResponseWriter, r *http.Request) {
 	outPath := filepath.Join(tmpDir, "output.docx")
 
 	if err := writeUploadToFile(file, inPath); err != nil {
-		http.Error(w, "failed to read uploaded file", http.StatusInternalServerError)
+		httpError(w, http.StatusInternalServerError, "failed to read uploaded file", "writeUploadToFile: %v", err)
 		return
 	}
+
+	log.Printf("redact/docx: %q saved, starting redaction", header.Filename)
+	start := time.Now()
 
 	proc := h.newProcessor()
 	redact := func(text string) (string, int) {
@@ -87,14 +94,26 @@ func (h *Handler) RedactDocx(w http.ResponseWriter, r *http.Request) {
 		return redacted, len(replacements)
 	}
 
-	if _, err := docxio.RedactFile(inPath, outPath, redact); err != nil {
-		http.Error(w, "failed to redact document", http.StatusInternalServerError)
+	matches, err := docxio.RedactFile(inPath, outPath, redact)
+	if err != nil {
+		httpError(w, http.StatusInternalServerError, "failed to redact document", "docxio.RedactFile(%q): %v", header.Filename, err)
 		return
 	}
+
+	log.Printf("redact/docx: %q done — %d matches redacted in %s", header.Filename, matches, time.Since(start))
 
 	w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 	w.Header().Set("Content-Disposition", `attachment; filename="redacted.docx"`)
 	http.ServeFile(w, r, outPath)
+}
+
+// httpError logs the real, detailed error server-side (format+args) and
+// sends the client a generic message — so nothing that goes wrong is
+// silently invisible in the logs, without leaking internals in the
+// response body.
+func httpError(w http.ResponseWriter, status int, clientMsg, logFormat string, logArgs ...any) {
+	log.Printf("redact/docx: "+logFormat, logArgs...)
+	http.Error(w, clientMsg, status)
 }
 
 func writeUploadToFile(src io.Reader, dstPath string) error {

@@ -5,6 +5,7 @@ package docxio
 
 import (
 	"fmt"
+	"log"
 
 	docx "github.com/mmonterroca/docxgo"
 	"github.com/mmonterroca/docxgo/domain"
@@ -41,7 +42,10 @@ func RedactFile(inPath, outPath string, redact RedactFunc) (int, error) {
 		return 0, fmt.Errorf("docxio: open %q: %w", inPath, err)
 	}
 
-	total := redactRuns(collectRuns(doc), redact)
+	runs := collectRuns(doc)
+	log.Printf("docxio: %q has %d runs to scan", inPath, len(runs))
+
+	total := redactRuns(runs, redact)
 
 	if err := doc.SaveAs(outPath); err != nil {
 		return total, fmt.Errorf("docxio: save %q: %w", outPath, err)
@@ -104,7 +108,10 @@ func redactRuns(runs []domain.Run, redact RedactFunc) int {
 		}
 		if err := run.SetText(redacted[i]); err != nil {
 			// Best-effort: leave the original run text in place rather
-			// than fail the whole document over one unwritable run.
+			// than fail the whole document over one unwritable run. Still
+			// surface it — a run silently keeping its original PII is
+			// exactly the kind of failure that must not go unnoticed.
+			log.Printf("docxio: failed to write redacted run %d, leaving original text in place: %v", i, err)
 			continue
 		}
 		total += counts[i]
