@@ -55,6 +55,20 @@ func (c *GRPCClient) Analyze(ctx context.Context, text string) ([]Entity, error)
 	return entities, nil
 }
 
+// RedactImage sends image data to the NLP worker for OCR-based PII
+// redaction and returns the (possibly modified) image bytes.
+func (c *GRPCClient) RedactImage(ctx context.Context, data []byte, format string) ([]byte, int, error) {
+	start := time.Now()
+	resp, err := c.client.RedactImage(ctx, &pb.RedactImageRequest{ImageData: data, Format: format})
+	if err != nil {
+		log.Printf("grpcclient: redact_image call failed after %s: %v", time.Since(start), err)
+		return nil, 0, fmt.Errorf("grpcclient: redact_image: %w", err)
+	}
+	log.Printf("grpcclient: redacted %d-byte %s image, %d regions, took %s",
+		len(data), format, resp.GetRedactions(), time.Since(start))
+	return resp.GetImageData(), int(resp.GetRedactions()), nil
+}
+
 // Close releases the underlying connection to the NLP worker.
 func (c *GRPCClient) Close() error {
 	return c.conn.Close()

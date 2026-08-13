@@ -9,9 +9,10 @@ import (
 )
 
 type countingClient struct {
-	calls     atomic.Int64
-	startOnce sync.Once
-	started   chan struct{}
+	calls      atomic.Int64
+	imageCalls atomic.Int64
+	startOnce  sync.Once
+	started    chan struct{}
 	// gate lets the test hold the first call open until every concurrent
 	// duplicate has had a chance to join it, so the dedup is proven against
 	// calls that are genuinely in-flight together, not just ones that
@@ -24,6 +25,13 @@ func (c *countingClient) Analyze(ctx context.Context, text string) ([]Entity, er
 	c.startOnce.Do(func() { close(c.started) })
 	<-c.gate
 	return []Entity{{Type: "PERSON", Start: 0, End: len(text), Text: text, Confidence: 0.9}}, nil
+}
+
+func (c *countingClient) RedactImage(ctx context.Context, data []byte, format string) ([]byte, int, error) {
+	c.imageCalls.Add(1)
+	c.startOnce.Do(func() { close(c.started) })
+	<-c.gate
+	return append([]byte(nil), data...), 1, nil
 }
 
 func (c *countingClient) Close() error { return nil }
@@ -118,6 +126,70 @@ func TestDedupingClientCachesCompletedCallsAcrossNonOverlappingRequests(t *testi
 	}
 	if len(first) != len(second) || first[0].Text != second[0].Text {
 		t.Errorf("expected identical results from cache, got %+v and %+v", first, second)
+	}
+}
+
+func TestDedupingClientCachesRedactImageResultsAcrossNonOverlappingRequests(t *testing.T) {
+	// Mirrors TestDedupingClientCachesCompletedCallsAcrossNonOverlappingRequests
+	// for images: a letterhead or logo repeated across many pages of a
+	// scanned document should only ever be sent to the worker once.
+	inner := &countingClient{started: make(chan struct{}), gate: make(chan struct{})}
+	close(inner.gate)
+	client := NewDedupingClient(inner)
+
+	imageData := []byte("fake-png-bytes")
+
+	first, count1, err := client.RedactImage(context.Background(), imageData, "png")
+	if err != nil {
+		t.Fatalf("RedactImage: %v", err)
+	}
+	second, count2, err := client.RedactImage(context.Background(), imageData, "png")
+	if err != nil {
+		t.Fatalf("RedactImage: %v", err)
+	}
+
+	if got := inner.imageCalls.Load(); got != 1 {
+		t.Errorf("expected exactly 1 underlying call, the second should have been a cache hit; got %d", got)
+	}
+	if count1 != count2 || string(first) != string(second) {
+		t.Errorf("expected identical results from cache, got (%v,%d) and (%v,%d)", first, count1, second, count2)
+	}
+}
+
+func TestDedupingClientRedactImageDistinctImagesBothCall(t *testing.T) {
+	inner := &countingClient{started: make(chan struct{}), gate: make(chan struct{})}
+	close(inner.gate)
+	client := NewDedupingClient(inner)
+
+	if _, _, err := client.RedactImage(context.Background(), []byte("image one"), "png"); err != nil {
+		t.Fatalf("RedactImage: %v", err)
+	}
+	if _, _, err := client.RedactImage(context.Background(), []byte("image two"), "png"); err != nil {
+		t.Fatalf("RedactImage: %v", err)
+	}
+
+	if got := inner.imageCalls.Load(); got != 2 {
+		t.Errorf("expected 2 underlying calls for 2 distinct images, got %d", got)
+	}
+}
+
+func TestDedupingClientRedactImageSameBytesDifferentFormatBothCall(t *testing.T) {
+	// Same raw bytes under two different format hints should not collide
+	// in the cache key.
+	inner := &countingClient{started: make(chan struct{}), gate: make(chan struct{})}
+	close(inner.gate)
+	client := NewDedupingClient(inner)
+
+	data := []byte("identical bytes")
+	if _, _, err := client.RedactImage(context.Background(), data, "png"); err != nil {
+		t.Fatalf("RedactImage: %v", err)
+	}
+	if _, _, err := client.RedactImage(context.Background(), data, "jpeg"); err != nil {
+		t.Fatalf("RedactImage: %v", err)
+	}
+
+	if got := inner.imageCalls.Load(); got != 2 {
+		t.Errorf("expected 2 underlying calls for 2 distinct formats, got %d", got)
 	}
 }
 

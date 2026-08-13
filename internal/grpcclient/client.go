@@ -1,11 +1,6 @@
-// Package grpcclient defines the contract between the Go engine and the
-// Python NLP worker responsible for unstructured PII (person names,
-// company names, physical addresses). The worker itself and its generated
-// protobuf stubs are a later phase of this project (see proto/redactor.proto);
-// this package lets the rest of the engine — NLPDetector, and the wiring in
-// cmd/main.go — be built, registered, and tested today against
-// NoOpClient, then pointed at a real gRPC-backed implementation later
-// without any other file changing.
+// Package grpcclient is the contract between the Go engine and the Python
+// NLP worker (python-worker/): unstructured text PII (Analyze) and PII
+// embedded in images such as scanned IDs or screenshots (RedactImage).
 package grpcclient
 
 import "context"
@@ -20,21 +15,33 @@ type Entity struct {
 	Confidence float64
 }
 
-// NLPClient analyzes text for unstructured PII entities. Implementations
-// must be safe for concurrent use, since the processor may invoke
-// detectors backed by the same client from multiple goroutines.
+// NLPClient analyzes text for unstructured PII entities and redacts PII
+// found inside images. Implementations must be safe for concurrent use,
+// since the processor may invoke detectors — and docxio may redact
+// multiple images — backed by the same client from multiple goroutines.
 type NLPClient interface {
 	Analyze(ctx context.Context, text string) ([]Entity, error)
+
+	// RedactImage returns data re-encoded in format with every detected
+	// PII region blacked out, plus how many regions were redacted. If no
+	// PII is found, data is returned unchanged (redactions is 0).
+	RedactImage(ctx context.Context, data []byte, format string) (redacted []byte, redactions int, err error)
+
 	Close() error
 }
 
-// NoOpClient is the default NLPClient: it reports no entities. It exists so
-// the engine runs correctly, end to end, before the Python worker exists —
-// structured PII (email, phone, SSN, credit card, IP, DOB) is still fully
-// detected and redacted; only the unstructured categories are inactive
-// until a real NLPClient is substituted.
+// NoOpClient is the default NLPClient: it reports no text entities and
+// passes images through unchanged. It exists so the engine runs
+// correctly, end to end, without the Python worker running — structured
+// PII (email, phone, SSN, credit card, IP, DOB) is still fully detected
+// and redacted; only the unstructured and image-embedded categories are
+// inactive until a real NLPClient is substituted.
 type NoOpClient struct{}
 
 func (NoOpClient) Analyze(ctx context.Context, text string) ([]Entity, error) { return nil, nil }
+
+func (NoOpClient) RedactImage(ctx context.Context, data []byte, format string) ([]byte, int, error) {
+	return data, 0, nil
+}
 
 func (NoOpClient) Close() error { return nil }

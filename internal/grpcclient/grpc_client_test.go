@@ -17,11 +17,22 @@ import (
 // GRPCClient's wire-to-Entity translation without a real NLP model.
 type fakeNLPServiceServer struct {
 	pb.UnimplementedNLPServiceServer
-	entities []*pb.Entity
+	entities   []*pb.Entity
+	redactions int32
 }
 
 func (f *fakeNLPServiceServer) Analyze(ctx context.Context, req *pb.AnalyzeRequest) (*pb.AnalyzeResponse, error) {
 	return &pb.AnalyzeResponse{Entities: f.entities}, nil
+}
+
+func (f *fakeNLPServiceServer) RedactImage(ctx context.Context, req *pb.RedactImageRequest) (*pb.RedactImageResponse, error) {
+	// Echo the input back with a marker byte appended, so the test can
+	// tell the response actually came from this handler and round-tripped
+	// through the real wire format rather than being a zero value.
+	return &pb.RedactImageResponse{
+		ImageData:  append(append([]byte(nil), req.GetImageData()...), '!'),
+		Redactions: f.redactions,
+	}, nil
 }
 
 // dialFake starts fake in-process over a bufconn listener and returns a
@@ -79,6 +90,22 @@ func TestGRPCClientAnalyzeEmpty(t *testing.T) {
 	}
 	if len(entities) != 0 {
 		t.Errorf("expected no entities, got %+v", entities)
+	}
+}
+
+func TestGRPCClientRedactImage(t *testing.T) {
+	fake := &fakeNLPServiceServer{redactions: 3}
+	client := dialFake(t, fake)
+
+	redacted, count, err := client.RedactImage(context.Background(), []byte("fake-png-bytes"), "png")
+	if err != nil {
+		t.Fatalf("RedactImage: %v", err)
+	}
+	if string(redacted) != "fake-png-bytes!" {
+		t.Errorf("unexpected redacted bytes: %q", redacted)
+	}
+	if count != 3 {
+		t.Errorf("expected 3 redactions, got %d", count)
 	}
 }
 

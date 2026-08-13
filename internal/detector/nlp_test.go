@@ -16,6 +16,10 @@ func (f *fakeNLPClient) Analyze(ctx context.Context, text string) ([]grpcclient.
 	return f.entities, f.err
 }
 
+func (f *fakeNLPClient) RedactImage(ctx context.Context, data []byte, format string) ([]byte, int, error) {
+	return data, 0, f.err
+}
+
 func (f *fakeNLPClient) Close() error { return nil }
 
 func TestNLPDetector(t *testing.T) {
