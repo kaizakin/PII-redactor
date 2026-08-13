@@ -13,6 +13,7 @@ import (
 	"github.com/kaizakin/PII-redactor/internal/detector"
 	"github.com/kaizakin/PII-redactor/internal/docxio"
 	"github.com/kaizakin/PII-redactor/internal/faker"
+	"github.com/kaizakin/PII-redactor/internal/grpcclient"
 	"github.com/kaizakin/PII-redactor/internal/processor"
 )
 
@@ -25,12 +26,14 @@ const maxUploadSize = 32 << 20 // 32 MiB
 type Handler struct {
 	detectors  []detector.Detector
 	generators map[detector.PIIType]faker.Generator
+	nlpClient  grpcclient.NLPClient
 }
 
-// NewHandler builds a Handler from the active set of detectors and the
-// PII-type-to-generator mapping used to fake matches.
-func NewHandler(detectors []detector.Detector, generators map[detector.PIIType]faker.Generator) *Handler {
-	return &Handler{detectors: detectors, generators: generators}
+// NewHandler builds a Handler from the active set of detectors, the
+// PII-type-to-generator mapping used to fake text matches, and the NLP
+// client used to redact PII embedded in images (word/media/* entries).
+func NewHandler(detectors []detector.Detector, generators map[detector.PIIType]faker.Generator, nlpClient grpcclient.NLPClient) *Handler {
+	return &Handler{detectors: detectors, generators: generators, nlpClient: nlpClient}
 }
 
 // newProcessor builds a fresh Processor with its own faker.Cache. A new
@@ -89,18 +92,27 @@ func (h *Handler) RedactDocx(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 
 	proc := h.newProcessor()
-	redact := func(text string) (string, int) {
+	textRedact := func(text string) (string, int) {
 		redacted, replacements := proc.Redact(text)
 		return redacted, len(replacements)
 	}
+	imageRedact := func(data []byte, format string) ([]byte, int) {
+		redacted, count, err := h.nlpClient.RedactImage(r.Context(), data, format)
+		if err != nil {
+			log.Printf("redact/docx: %q: image redaction failed, leaving image unchanged: %v", header.Filename, err)
+			return data, 0
+		}
+		return redacted, count
+	}
 
-	matches, err := docxio.RedactFile(inPath, outPath, redact)
+	textMatches, imageRegions, err := docxio.RedactDocument(inPath, outPath, textRedact, imageRedact)
 	if err != nil {
-		httpError(w, http.StatusInternalServerError, "failed to redact document", "docxio.RedactFile(%q): %v", header.Filename, err)
+		httpError(w, http.StatusInternalServerError, "failed to redact document", "docxio.RedactDocument(%q): %v", header.Filename, err)
 		return
 	}
 
-	log.Printf("redact/docx: %q done — %d matches redacted in %s", header.Filename, matches, time.Since(start))
+	log.Printf("redact/docx: %q done — %d text matches, %d image regions redacted in %s",
+		header.Filename, textMatches, imageRegions, time.Since(start))
 
 	w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 	w.Header().Set("Content-Disposition", `attachment; filename="redacted.docx"`)

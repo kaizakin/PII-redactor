@@ -65,7 +65,7 @@ func main() {
 	nlpClient := buildNLPClient(cfg)
 	defer nlpClient.Close()
 
-	handler := api.NewHandler(buildDetectors(cfg, nlpClient), processor.DefaultGenerators())
+	handler := api.NewHandler(buildDetectors(cfg, nlpClient), processor.DefaultGenerators(), nlpClient)
 	router := api.NewRouter(handler)
 
 	srv := &http.Server{
