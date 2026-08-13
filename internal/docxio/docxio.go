@@ -6,6 +6,8 @@ package docxio
 import (
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 
 	docx "github.com/mmonterroca/docxgo"
 	"github.com/mmonterroca/docxgo/domain"
@@ -51,6 +53,33 @@ func RedactFile(inPath, outPath string, redact RedactFunc) (int, error) {
 		return total, fmt.Errorf("docxio: save %q: %w", outPath, err)
 	}
 	return total, nil
+}
+
+// RedactDocument runs the full redaction pipeline against the .docx file
+// at inPath: text first (textRedact, against every paragraph and
+// table-cell run, via docxgo), then embedded images (imageRedact, against
+// every entry under word/media/, via direct ZIP surgery — see images.go
+// for why that's a separate code path from the docxgo-based text pass).
+// It returns the number of text matches and image regions redacted.
+func RedactDocument(inPath, outPath string, textRedact RedactFunc, imageRedact ImageRedactFunc) (textMatches, imageRegions int, err error) {
+	intermediate, err := os.CreateTemp(filepath.Dir(outPath), "docxio-text-*.docx")
+	if err != nil {
+		return 0, 0, fmt.Errorf("docxio: create intermediate file: %w", err)
+	}
+	intermediatePath := intermediate.Name()
+	intermediate.Close()
+	defer os.Remove(intermediatePath)
+
+	textMatches, err = RedactFile(inPath, intermediatePath, textRedact)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	imageRegions, err = RedactImagesInFile(intermediatePath, outPath, imageRedact)
+	if err != nil {
+		return textMatches, 0, err
+	}
+	return textMatches, imageRegions, nil
 }
 
 // collectRuns flattens every run in the document — top-level paragraphs

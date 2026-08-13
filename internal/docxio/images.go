@@ -5,9 +5,19 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"strings"
+
+	"golang.org/x/sync/errgroup"
 )
+
+// ImageRedactFunc redacts a single embedded image, returning the (possibly
+// re-encoded) image bytes and how many PII regions were blacked out. Like
+// RedactFunc, this package takes it as a dependency rather than importing
+// internal/grpcclient directly, keeping this package's only real-world
+// dependency on OCR/PII detection at the call site, not compiled in.
+type ImageRedactFunc func(data []byte, format string) (redacted []byte, redactions int)
 
 // mediaPrefix is where a .docx package stores embedded images. docxgo's
 // domain.Image exposes Data() to read these bytes but has no way to
@@ -65,6 +75,73 @@ func ExtractImages(path string) ([]MediaFile, error) {
 		images = append(images, MediaFile{Name: f.Name, Data: data})
 	}
 	return images, nil
+}
+
+// RedactImagesInFile redacts every embedded image in the .docx file at
+// inPath and writes the result to outPath. It returns the total number of
+// PII regions redacted across every image. If the document has no images,
+// or none of them contain PII, outPath is an unmodified copy of inPath.
+//
+// Images are redacted concurrently (bounded by maxConcurrentRedactions),
+// same as text runs in RedactFile — each redact call may be a network
+// round trip to the NLP worker's OCR pipeline, and a document can embed
+// several images (scanned pages, screenshots, ID photos).
+func RedactImagesInFile(inPath, outPath string, redact ImageRedactFunc) (int, error) {
+	images, err := ExtractImages(inPath)
+	if err != nil {
+		return 0, err
+	}
+	if len(images) == 0 {
+		return 0, copyFile(inPath, outPath)
+	}
+	log.Printf("docxio: %q has %d embedded images to scan", inPath, len(images))
+
+	redactedData := make([][]byte, len(images))
+	counts := make([]int, len(images))
+
+	var g errgroup.Group
+	g.SetLimit(maxConcurrentRedactions)
+	for i, img := range images {
+		g.Go(func() error {
+			redactedData[i], counts[i] = redact(img.Data, img.Format())
+			return nil
+		})
+	}
+	_ = g.Wait() // redact has no error to propagate; every goroutine above always returns nil
+
+	total := 0
+	replacements := make(map[string][]byte, len(images))
+	for i, img := range images {
+		if counts[i] == 0 {
+			continue
+		}
+		replacements[img.Name] = redactedData[i]
+		total += counts[i]
+	}
+
+	if len(replacements) == 0 {
+		return 0, copyFile(inPath, outPath)
+	}
+	return total, ReplaceImages(inPath, outPath, replacements)
+}
+
+func copyFile(inPath, outPath string) error {
+	src, err := os.Open(inPath)
+	if err != nil {
+		return fmt.Errorf("docxio: open %q: %w", inPath, err)
+	}
+	defer src.Close()
+
+	dst, err := os.Create(outPath)
+	if err != nil {
+		return fmt.Errorf("docxio: create %q: %w", outPath, err)
+	}
+	defer dst.Close()
+
+	if _, err := io.Copy(dst, src); err != nil {
+		return fmt.Errorf("docxio: copy %q to %q: %w", inPath, outPath, err)
+	}
+	return nil
 }
 
 // ReplaceImages copies every entry from the .docx file at inPath into a

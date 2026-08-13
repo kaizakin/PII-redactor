@@ -1,6 +1,8 @@
 package docxio
 
 import (
+	"bytes"
+	"image/color"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -120,6 +122,72 @@ func TestRedactFile(t *testing.T) {
 	}
 	if got := cellParas[0].Text(); got != "Table cell holds REDACTED too." {
 		t.Errorf("unexpected table cell text: %q", got)
+	}
+}
+
+func TestRedactDocument(t *testing.T) {
+	dir := t.TempDir()
+	inPath := filepath.Join(dir, "input.docx")
+	outPath := filepath.Join(dir, "output.docx")
+
+	doc := docx.NewDocument()
+	para, err := doc.AddParagraph()
+	if err != nil {
+		t.Fatalf("AddParagraph: %v", err)
+	}
+	run, err := para.AddRun()
+	if err != nil {
+		t.Fatalf("AddRun: %v", err)
+	}
+	if err := run.SetText("Contact SECRET for details."); err != nil {
+		t.Fatalf("SetText: %v", err)
+	}
+
+	imgPara, err := doc.AddParagraph()
+	if err != nil {
+		t.Fatalf("AddParagraph: %v", err)
+	}
+	original := writeTestPNG(t, filepath.Join(dir, "src.png"), color.RGBA{R: 255, A: 255})
+	if _, err := imgPara.AddImage(filepath.Join(dir, "src.png")); err != nil {
+		t.Fatalf("AddImage: %v", err)
+	}
+
+	if err := doc.SaveAs(inPath); err != nil {
+		t.Fatalf("SaveAs: %v", err)
+	}
+
+	imageRedact := func(data []byte, format string) ([]byte, int) {
+		return append(append([]byte(nil), data...), '!'), 5
+	}
+
+	textMatches, imageRegions, err := RedactDocument(inPath, outPath, fakeRedact, imageRedact)
+	if err != nil {
+		t.Fatalf("RedactDocument: %v", err)
+	}
+	if textMatches != 1 {
+		t.Errorf("expected 1 text match, got %d", textMatches)
+	}
+	if imageRegions != 5 {
+		t.Errorf("expected 5 image regions, got %d", imageRegions)
+	}
+
+	reopened, err := docx.OpenDocument(outPath)
+	if err != nil {
+		t.Fatalf("OpenDocument: %v", err)
+	}
+	if got := reopened.Paragraphs()[0].Text(); got != "Contact REDACTED for details." {
+		t.Errorf("unexpected paragraph text: %q", got)
+	}
+
+	images, err := ExtractImages(outPath)
+	if err != nil {
+		t.Fatalf("ExtractImages: %v", err)
+	}
+	if len(images) != 1 {
+		t.Fatalf("expected 1 image, got %d", len(images))
+	}
+	if !bytes.Equal(images[0].Data, append(append([]byte(nil), original...), '!')) {
+		t.Errorf("expected the image to carry the redacted bytes")
 	}
 }
 
