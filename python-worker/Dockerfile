@@ -2,6 +2,13 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
+# tesseract-ocr is the OCR engine ImageRedactor shells out to via
+# pytesseract; on Debian it pulls in English language data
+# (tesseract-ocr-eng) as a dependency, which is all this service needs.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends tesseract-ocr \
+    && rm -rf /var/lib/apt/lists/*
+
 # grpcio, spacy, and the en_core_web_sm model all ship prebuilt manylinux
 # wheels for this platform, so no compiler toolchain is needed here.
 COPY requirements.txt .

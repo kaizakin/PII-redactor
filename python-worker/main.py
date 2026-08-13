@@ -2,8 +2,9 @@
 
 Serves NLPService (see proto/redactor.proto) over gRPC so the Go engine's
 internal/grpcclient.GRPCClient can detect unstructured PII — person names,
-company names, physical addresses — that regex-based structured detectors
-can't reliably catch.
+company names, physical addresses — in text that regex-based structured
+detectors can't reliably catch, and PII embedded in images (scanned IDs,
+screenshots) via OCR.
 """
 
 import logging
@@ -14,6 +15,7 @@ import grpc
 
 from gen import redactor_pb2_grpc
 from redactor.analyzer import DEFAULT_MODEL, PresidioAnalyzer
+from redactor.image_redactor import ImageRedactor
 from redactor.service import NLPService
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -27,9 +29,10 @@ def serve() -> None:
 
     logger.info("loading spaCy model %s", model_name)
     analyzer = PresidioAnalyzer(model_name=model_name)
+    image_redactor = ImageRedactor(analyzer)
 
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=max_workers))
-    redactor_pb2_grpc.add_NLPServiceServicer_to_server(NLPService(analyzer), server)
+    redactor_pb2_grpc.add_NLPServiceServicer_to_server(NLPService(analyzer, image_redactor), server)
     server.add_insecure_port(f"[::]:{port}")
 
     server.start()
