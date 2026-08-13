@@ -46,8 +46,10 @@ internal/
   faker/                     Deterministic, thread-safe fake-value cache
   processor/                 Runs detectors concurrently, resolves overlaps,
                               applies replacements
-  docxio/                    Redacts .docx files: text via docxgo, images
-                              via direct ZIP surgery (docxio.go, images.go)
+  docxio/                    Redacts .docx files by splicing raw ZIP/XML
+                              bytes directly — text (xmltext.go) and images
+                              (images.go); see Text redaction fidelity below
+                              for why this doesn't use docxgo's object model
   grpcclient/                NLPClient: NoOpClient (structured-only
                               fallback), GRPCClient (talks to the worker),
                               DedupingClient (collapses redundant calls —
@@ -141,6 +143,37 @@ recognizers (email, phone, credit card, SSN, IP) in addition to
 PERSON/ORG/ADDRESS — Go's regex detectors never see image bytes at all,
 since they never round-trip through the Go text pipeline, so this is the
 only place that catches structured PII embedded in an image.
+
+## Text redaction fidelity
+
+`docxio` redacts the visible text of a `.docx` (the document body and
+every header/footer) by splicing directly into the raw bytes of
+`word/document.xml`/`word/header*.xml`/`word/footer*.xml` at the exact
+byte range of each `<w:t>` element's content — never through docxgo's
+typed object model, and never by decoding into generic XML tokens and
+re-encoding them either. Both alternatives were tried and both corrupt
+real documents, for different reasons:
+
+- **docxgo's object model** represents bold, italic, color, underline,
+  and highlight, and text redacted through it preserves all of those
+  correctly. But paragraph/run shading (`<w:shd>`, e.g. a colored
+  background) and any other OOXML feature outside that model has no field
+  to round-trip through — it's silently dropped on **any** read+write pass,
+  even for a paragraph redaction never touches, because the reader has
+  nowhere to put it and the writer has nothing to serialize it from.
+- **Go's `encoding/xml`**, used the "obvious" way — decode the whole
+  document into generic tokens, mutate the ones you care about, re-encode
+  the rest — has its own failure mode: `xml.Encoder` does not preserve the
+  original namespace prefixes of tokens it re-serializes. It invents its
+  own, differently for every element, turning `<w:t xml:space="preserve">`
+  into something like `<t xmlns="..." xmlns:main="...">` — a different,
+  likely Word-incompatible, and definitely far uglier document.
+
+Splicing into the original bytes at exactly the offsets `<w:t>` content
+occupies (found via `xml.Decoder`, used purely as a tokenizer — never via
+`xml.Encoder`) sidesteps both failure modes: every byte outside a value
+actually being redacted, known formatting or not, passes through
+unchanged, because nothing is ever reconstructed.
 
 ## Deterministic replacement
 
