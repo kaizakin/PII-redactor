@@ -18,6 +18,19 @@ from .recognizers import AddressRecognizer, OrgSuffixRecognizer, SpacyOrgRecogni
 # compile-time link between the two.
 SUPPORTED_ENTITIES = ["PERSON", "ORG", "ADDRESS"]
 
+# OCR'd image text is a separate surface from the main text path: Go's
+# regex detectors (email, phone, SSN, credit card, IP — each with its own
+# real validity check, see internal/detector) never see image bytes at
+# all, since those never round-trip through Go's text pipeline. Presidio
+# already loads built-in recognizers for these structured types as part of
+# its default registry (see PresidioAnalyzer.__init__), so reusing them
+# here for OCR text is free — no extra model loading, just a wider
+# `entities` filter at analyze time. They're less rigorous than the Go
+# detectors' own validation (no Luhn check, no SSA rules, no
+# libphonenumber), which is an acceptable tradeoff given OCR output itself
+# already carries misread-character noise.
+OCR_ENTITIES = SUPPORTED_ENTITIES + ["EMAIL_ADDRESS", "PHONE_NUMBER", "CREDIT_CARD", "US_SSN", "IP_ADDRESS"]
+
 # en_core_web_sm keeps startup time and Docker image size small. Swapping
 # in en_core_web_lg (better accuracy, ~400MB) or a transformer-based
 # pipeline is a one-line change here, with no change anywhere else in the
@@ -82,11 +95,19 @@ class PresidioAnalyzer:
         self._engine = AnalyzerEngine(registry=registry, nlp_engine=nlp_engine, supported_languages=["en"])
 
     def analyze(self, text: str) -> List[Entity]:
+        """Analyzes free text for the main Go <-> Python text pipeline."""
+        return self._analyze(text, SUPPORTED_ENTITIES)
+
+    def analyze_ocr(self, text: str) -> List[Entity]:
+        """Analyzes OCR'd image text, with the wider OCR_ENTITIES set."""
+        return self._analyze(text, OCR_ENTITIES)
+
+    def _analyze(self, text: str, entities: List[str]) -> List[Entity]:
         if not text:
             return []
-        results = self._engine.analyze(text=text, language="en", entities=SUPPORTED_ENTITIES)
-        entities = [
+        results = self._engine.analyze(text=text, language="en", entities=entities)
+        found = [
             Entity(type=r.entity_type, start=r.start, end=r.end, text=text[r.start : r.end], confidence=r.score)
             for r in results
         ]
-        return [e for e in entities if e.type != "PERSON" or _is_full_name(e.text)]
+        return [e for e in found if e.type != "PERSON" or _is_full_name(e.text)]

@@ -2,6 +2,8 @@ grpcio==1.83.0
 grpcio-tools==1.83.0
 presidio-analyzer==2.2.364
 spacy==3.8.15
+pytesseract==0.3.13
+Pillow==12.3.0
 
 # spaCy's small English pipeline. Not on PyPI proper — installed as a
 # direct wheel URL, which pip handles like any other dependency. Swapping
