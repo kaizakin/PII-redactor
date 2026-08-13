@@ -3,7 +3,7 @@
 // company names, physical addresses). The worker itself and its generated
 // protobuf stubs are a later phase of this project (see proto/redactor.proto);
 // this package lets the rest of the engine — NLPDetector, and the wiring in
-// cmd/server/main.go — be built, registered, and tested today against
+// cmd/main.go — be built, registered, and tested today against
 // NoOpClient, then pointed at a real gRPC-backed implementation later
 // without any other file changing.
 package grpcclient

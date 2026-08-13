@@ -2,7 +2,6 @@
 package api
 
 import (
-	"encoding/json"
 	"io"
 	"net/http"
 	"os"
@@ -39,64 +38,6 @@ func NewHandler(detectors []detector.Detector, generators map[detector.PIIType]f
 // requests from other callers.
 func (h *Handler) newProcessor() *processor.Processor {
 	return processor.New(h.detectors, faker.NewCache(), h.generators)
-}
-
-// Health reports that the service is up.
-func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte("ok"))
-}
-
-type redactTextRequest struct {
-	Text string `json:"text"`
-}
-
-type matchResponse struct {
-	Type  string `json:"type"`
-	Start int    `json:"start"`
-	End   int    `json:"end"`
-}
-
-type redactTextResponse struct {
-	RedactedText string          `json:"redacted_text"`
-	Matches      []matchResponse `json:"matches"`
-}
-
-// RedactText handles POST /api/v1/redact: it accepts {"text": "..."} and
-// returns the redacted text plus match metadata (type and offsets only —
-// never the original PII value, so the response itself can't leak it).
-func (h *Handler) RedactText(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	var req redactTextRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid JSON body", http.StatusBadRequest)
-		return
-	}
-	if req.Text == "" {
-		http.Error(w, "text is required", http.StatusBadRequest)
-		return
-	}
-
-	redacted, replacements := h.newProcessor().Redact(req.Text)
-
-	resp := redactTextResponse{
-		RedactedText: redacted,
-		Matches:      make([]matchResponse, 0, len(replacements)),
-	}
-	for _, rep := range replacements {
-		resp.Matches = append(resp.Matches, matchResponse{
-			Type:  string(rep.Match.Type),
-			Start: rep.Match.Start,
-			End:   rep.Match.End,
-		})
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(resp)
 }
 
 // RedactDocx handles POST /api/v1/redact/docx: it accepts a multipart

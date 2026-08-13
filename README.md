@@ -21,7 +21,7 @@ type Detector interface {
 ```
 
 ```
-cmd/server/main.go        Wires detectors + processor + API into an HTTP server
+cmd/main.go               Wires detectors + processor + API into an HTTP server
 internal/
   detector/                Strategy pattern: one file per PII type
     detector.go              Detector interface, PIIType, Match
@@ -75,8 +75,8 @@ scoped to one document — it never leaks across unrelated requests.
 ## Running it
 
 ```bash
-go run ./cmd/server              # listens on :8080 by default
-PORT=9090 go run ./cmd/server    # override the port
+go run ./cmd                     # listens on :8080 by default
+PORT=9090 go run ./cmd           # override the port
 
 docker build -t pii-redactor .
 docker run -p 8080:8080 pii-redactor

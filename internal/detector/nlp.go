@@ -17,7 +17,7 @@ import (
 //
 // Registered today with grpcclient.NoOpClient, this detector simply
 // contributes zero matches. The moment a real NLPClient (backed by the
-// Python Presidio worker) is substituted in cmd/server/main.go, it becomes
+// Python Presidio worker) is substituted in cmd/main.go, it becomes
 // live — no other part of the engine changes.
 type NLPDetector struct {
 	client      grpcclient.NLPClient
