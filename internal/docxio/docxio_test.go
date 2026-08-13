@@ -191,6 +191,56 @@ func TestRedactDocument(t *testing.T) {
 	}
 }
 
+func TestRedactFileSurvivesAPanickingRedactFunc(t *testing.T) {
+	dir := t.TempDir()
+	inPath := filepath.Join(dir, "input.docx")
+	outPath := filepath.Join(dir, "output.docx")
+
+	doc := docx.NewDocument()
+	p1, _ := doc.AddParagraph()
+	r1, _ := p1.AddRun()
+	if err := r1.SetText("BOOM"); err != nil {
+		t.Fatalf("SetText: %v", err)
+	}
+	p2, _ := doc.AddParagraph()
+	r2, _ := p2.AddRun()
+	if err := r2.SetText("Contact SECRET for details."); err != nil {
+		t.Fatalf("SetText: %v", err)
+	}
+	if err := doc.SaveAs(inPath); err != nil {
+		t.Fatalf("SaveAs: %v", err)
+	}
+
+	panickyRedact := func(text string) (string, int) {
+		if text == "BOOM" {
+			panic("simulated redact failure")
+		}
+		return fakeRedact(text)
+	}
+
+	// The call itself must return normally, not crash the test process,
+	// and the non-panicking run must still get redacted correctly.
+	total, err := RedactFile(inPath, outPath, panickyRedact)
+	if err != nil {
+		t.Fatalf("RedactFile: %v", err)
+	}
+	if total != 1 {
+		t.Fatalf("expected 1 redaction from the surviving run, got %d", total)
+	}
+
+	reopened, err := docx.OpenDocument(outPath)
+	if err != nil {
+		t.Fatalf("OpenDocument: %v", err)
+	}
+	paras := reopened.Paragraphs()
+	if paras[0].Text() != "BOOM" {
+		t.Errorf("expected the panicking run's original text preserved, got %q", paras[0].Text())
+	}
+	if paras[1].Text() != "Contact REDACTED for details." {
+		t.Errorf("expected the surviving run redacted, got %q", paras[1].Text())
+	}
+}
+
 func TestRedactFileNoMatches(t *testing.T) {
 	dir := t.TempDir()
 	inPath := filepath.Join(dir, "input.docx")

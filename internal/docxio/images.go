@@ -10,6 +10,8 @@ import (
 	"strings"
 
 	"golang.org/x/sync/errgroup"
+
+	"github.com/kaizakin/PII-redactor/internal/safe"
 )
 
 // ImageRedactFunc redacts a single embedded image, returning the (possibly
@@ -103,6 +105,7 @@ func RedactImagesInFile(inPath, outPath string, redact ImageRedactFunc) (int, er
 	g.SetLimit(maxConcurrentRedactions)
 	for i, img := range images {
 		g.Go(func() error {
+			defer safe.Recover(fmt.Sprintf("docxio.RedactImagesInFile image %d (%s)", i, img.Name))
 			redactedData[i], counts[i] = redact(img.Data, img.Format())
 			return nil
 		})

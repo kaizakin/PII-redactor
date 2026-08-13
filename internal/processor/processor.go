@@ -5,12 +5,14 @@
 package processor
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 	"sync"
 
 	"github.com/kaizakin/PII-redactor/internal/detector"
 	"github.com/kaizakin/PII-redactor/internal/faker"
+	"github.com/kaizakin/PII-redactor/internal/safe"
 )
 
 // redactedPlaceholder is used when a detector reports a PII type that has
@@ -77,7 +79,9 @@ func (p *Processor) fake(m detector.Match) string {
 // detectAll runs every detector concurrently against text. Detectors are
 // required to be safe for concurrent use (see detector.Detector), and each
 // goroutine writes to its own slot, so no further synchronization is
-// needed beyond the WaitGroup.
+// needed beyond the WaitGroup. A panicking detector is recovered and
+// logged rather than left to crash the whole process — one bad input
+// should fail that detector's contribution, not the entire server.
 func (p *Processor) detectAll(text string) []detector.Match {
 	results := make([][]detector.Match, len(p.detectors))
 	var wg sync.WaitGroup
@@ -85,6 +89,7 @@ func (p *Processor) detectAll(text string) []detector.Match {
 		wg.Add(1)
 		go func(i int, d detector.Detector) {
 			defer wg.Done()
+			defer safe.Recover(fmt.Sprintf("processor.detectAll detector %s", d.Type()))
 			results[i] = d.Detect(text)
 		}(i, d)
 	}

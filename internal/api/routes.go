@@ -3,6 +3,7 @@ package api
 import (
 	"log"
 	"net/http"
+	"runtime/debug"
 	"time"
 )
 
@@ -10,7 +11,26 @@ import (
 func NewRouter(h *Handler) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/redact/docx", h.RedactDocx)
-	return withRequestLogging(mux)
+	return withRequestLogging(withRecovery(mux))
+}
+
+// withRecovery converts a panic reaching the request's main goroutine into
+// a clean 500 response instead of an abruptly reset connection — net/http
+// itself recovers such panics, but only by closing the connection with no
+// HTTP response at all, which the client just sees as a broken connection.
+// (Panics in goroutines *spawned by* a handler — concurrent detection,
+// concurrent image/run redaction — are a separate problem this doesn't
+// cover; see internal/safe.Recover, used at each of those call sites.)
+func withRecovery(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if rec := recover(); rec != nil {
+				log.Printf("http: recovered from panic handling %s %s: %v\n%s", r.Method, r.URL.Path, rec, debug.Stack())
+				http.Error(w, "internal server error", http.StatusInternalServerError)
+			}
+		}()
+		next.ServeHTTP(w, r)
+	})
 }
 
 // statusRecorder captures the status code a handler writes, since

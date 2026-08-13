@@ -19,6 +19,16 @@ type fakeDetector struct {
 func (f *fakeDetector) Type() detector.PIIType         { return f.piiType }
 func (f *fakeDetector) Detect(string) []detector.Match { return f.matches }
 
+// panickingDetector simulates a detector that panics on every call — e.g.
+// a bug triggered by some adversarial input — to prove detectAll survives
+// it instead of crashing the whole process.
+type panickingDetector struct{ piiType detector.PIIType }
+
+func (p *panickingDetector) Type() detector.PIIType { return p.piiType }
+func (p *panickingDetector) Detect(string) []detector.Match {
+	panic("simulated detector failure")
+}
+
 func TestProcessorRedact(t *testing.T) {
 	t.Run("replaces every detected match", func(t *testing.T) {
 		text := "Email jane@example.com and phone 555-0100."
@@ -94,6 +104,26 @@ func TestProcessorRedact(t *testing.T) {
 			t.Errorf("expected the longer SSN match to win, got %s", replacements[0].Match.Type)
 		}
 	})
+}
+
+func TestProcessorSurvivesAPanickingDetector(t *testing.T) {
+	detectors := []detector.Detector{
+		&panickingDetector{piiType: detector.TypeName},
+		detector.NewEmailDetector(),
+	}
+	p := New(detectors, faker.NewCache(), map[detector.PIIType]faker.Generator{
+		detector.TypeEmail: faker.Email,
+	})
+
+	// The call itself must return normally — not crash the test process —
+	// and the healthy detector's results must still come through.
+	redacted, replacements := p.Redact("jane@example.com sent this")
+	if len(replacements) != 1 || replacements[0].Match.Type != detector.TypeEmail {
+		t.Fatalf("expected the email detector's match to survive, got %+v", replacements)
+	}
+	if redacted == "jane@example.com sent this" {
+		t.Errorf("expected the email to be redacted despite the other detector panicking")
+	}
 }
 
 func TestApply(t *testing.T) {

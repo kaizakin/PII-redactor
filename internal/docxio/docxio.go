@@ -12,6 +12,8 @@ import (
 	docx "github.com/mmonterroca/docxgo"
 	"github.com/mmonterroca/docxgo/domain"
 	"golang.org/x/sync/errgroup"
+
+	"github.com/kaizakin/PII-redactor/internal/safe"
 )
 
 // RedactFunc redacts a single string of text, returning the redacted text
@@ -124,6 +126,7 @@ func redactRuns(runs []domain.Run, redact RedactFunc) int {
 			continue
 		}
 		g.Go(func() error {
+			defer safe.Recover(fmt.Sprintf("docxio.redactRuns run %d", i))
 			redacted[i], counts[i] = redact(text)
 			return nil
 		})
