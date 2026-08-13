@@ -4,10 +4,12 @@ A high-throughput, extensible PII redaction engine, split into two services:
 
 - **Go engine** (`cmd/`, `internal/`) — the API gateway. Detects structured
   PII with regex + validity checks, generates deterministic fake
-  replacements, and redacts `.docx` files in place.
-- **Python NLP worker** (`python-worker/`) — detects unstructured PII
-  (person names, company names, physical addresses) using Presidio/spaCy
-  NER, served to the Go engine over gRPC.
+  replacements, and redacts `.docx` files in place — both text and
+  embedded images.
+- **Python NLP worker** (`python-worker/`) — detects unstructured PII in
+  text (person names, company names, physical addresses) via Presidio/spaCy
+  NER, and PII embedded in images (scanned IDs, screenshots) via OCR —
+  served to the Go engine over gRPC.
 
 ## Architecture
 
@@ -25,6 +27,12 @@ type Detector interface {
 }
 ```
 
+Images are a separate surface with no equivalent XML text to redact —
+there is no `Detector` for them. Instead, `docxio` extracts every embedded
+image, sends its raw bytes to the Python worker for OCR-based redaction,
+and splices the result back into the `.docx` package directly at the ZIP
+level (see [Image-embedded PII](#image-embedded-pii)).
+
 ```
 cmd/main.go                 Wires detectors + processor + API into an HTTP server
 internal/
@@ -38,30 +46,34 @@ internal/
   faker/                     Deterministic, thread-safe fake-value cache
   processor/                 Runs detectors concurrently, resolves overlaps,
                               applies replacements
-  docxio/                    Redacts .docx files in place via docxgo
-  grpcclient/                NLPClient interface: NoOpClient (structured-only
-                              fallback) and GRPCClient (talks to the worker)
+  docxio/                    Redacts .docx files: text via docxgo, images
+                              via direct ZIP surgery (docxio.go, images.go)
+  grpcclient/                NLPClient: NoOpClient (structured-only
+                              fallback), GRPCClient (talks to the worker),
+                              DedupingClient (collapses redundant calls —
+                              see Performance below)
   api/                       HTTP handler: POST /redact/docx
   config/                    Environment-based configuration
 proto/
-  redactor.proto              gRPC contract between the Go engine and the worker
+  redactor.proto              gRPC contract: Analyze (text) + RedactImage
   gen/redactor/                Generated Go stubs
 python-worker/
   redactor/
     analyzer.py                 Presidio AnalyzerEngine + custom recognizers
     recognizers.py               ORG (spaCy NER + legal-suffix pattern) and
                                  ADDRESS (street-type pattern) recognizers
-    service.py                  gRPC service, translates Entity <-> protobuf
+    image_redactor.py           OCR (pytesseract) + pixel masking (Pillow)
+    service.py                  gRPC service: Analyze + RedactImage
   main.py                     Worker entrypoint
   gen/                        Generated Python stubs
 ```
 
 ## Precision vs. recall
 
-The nine PII types split into two pipelines, matched to how checkable
-each one actually is.
+The PII types split into three pipelines, matched to how checkable each
+one actually is.
 
-**Structured data (Go, regex + a real validity check):**
+**Structured text data (Go, regex + a real validity check):**
 
 | Type | Candidate scan | Validity check |
 |---|---|---|
@@ -75,7 +87,7 @@ each one actually is.
 A 16-digit order number that isn't Luhn-valid, or a "555" area code that
 doesn't exist in the NANP, is rejected — a regex alone would have kept it.
 
-**Unstructured data (Python, NER + rule-based heuristics):** names,
+**Unstructured text data (Python, NER + rule-based heuristics):** names,
 company names, and physical addresses don't follow a checkable grammar, so
 they go through spaCy's NER model via Presidio:
 
@@ -89,6 +101,46 @@ The worker defaults to `en_core_web_sm` (small, fast, small Docker image).
 Swapping in `en_core_web_lg` or a transformer pipeline for better recall is
 a one-line change in `python-worker/redactor/analyzer.py` — nothing on the
 Go side, or the gRPC contract, needs to change.
+
+## Image-embedded PII
+
+A `.docx` can carry PII inside a pixel array instead of text — a scanned
+ID, a screenshot, a photographed form — where there's no XML string to
+find or replace. That's a different pipeline end to end:
+
+```
+Go: extract word/media/*.png from the .docx ZIP
+        │
+        ▼
+Python: OCR (pytesseract) — words + bounding boxes + confidence
+        │
+        ▼
+Python: group words into lines, run PresidioAnalyzer over each line's text
+        │
+        ▼
+Python: map matched character spans back to the word boxes they cover,
+        union overlapping boxes, draw solid black rectangles (Pillow)
+        │
+        ▼
+Go: splice the redacted image bytes back into the .docx ZIP,
+    every other part of the package untouched
+```
+
+`docxio` extracts and replaces images at the raw ZIP layer rather than
+through `docxgo`, because `docxgo` can read an image's bytes (`Data()`)
+but has no method to replace them. An image's relationship ID and target
+path never change — only its pixel content — so this never needs to touch
+or understand OOXML relationships.
+
+Redaction is a **solid black fill**, never blur or pixelation: both of
+those are frequently reconstructible with the right tooling, a solid fill
+is not.
+
+OCR text is also checked against Presidio's built-in structured
+recognizers (email, phone, credit card, SSN, IP) in addition to
+PERSON/ORG/ADDRESS — Go's regex detectors never see image bytes at all,
+since they never round-trip through the Go text pipeline, so this is the
+only place that catches structured PII embedded in an image.
 
 ## Deterministic replacement
 
@@ -107,6 +159,31 @@ and a fake email in the same document are not linked to look like the same
 fake person — that would require entity linking, which this engine doesn't
 attempt.
 
+## Performance
+
+A real `.docx` can have hundreds of runs (Word splits paragraphs into many
+runs across edits, spell-check, and formatting changes), and each
+unstructured-PII run triggers three calls to the NLP worker — one per
+entity type (PERSON, ORG, ADDRESS) — for the exact same text. Naively,
+that's `runs × 3` network round trips.
+
+`internal/docxio` redacts every run (and every embedded image) **concurrently**,
+bounded by `maxConcurrentRedactions` (16 in flight), rather than one at a
+time. `internal/grpcclient.DedupingClient` then eliminates the ×3
+redundancy two ways:
+
+- `singleflight` collapses calls that are genuinely concurrent.
+- An LRU cache (separate ones for text and images, images keyed by a hash
+  of their bytes) catches everything singleflight can't — a real RPC round
+  trip is often faster than the scheduling jitter between three goroutines,
+  so in practice they rarely overlap enough for singleflight alone to
+  merge them. The image cache also means a repeated letterhead or logo
+  across every page of a scanned document is only ever OCR'd once.
+
+Measured on a synthetic 4800-run stress document: **56.5s → 11.7s** from
+concurrency + caching combined, with real gRPC calls to the worker dropping
+from ~15,000 to ~1,600.
+
 ## Running it
 
 ```bash
@@ -117,14 +194,17 @@ This builds and starts both services: the Python worker on `:50051`
 (healthchecked — the Go container waits for it) and the Go API on
 `:8080`, wired together via `NLP_WORKER_ADDR=python-worker:50051`.
 
-To run the Go engine alone, with structured detection only:
+To run the Go engine alone, with structured text detection only (no
+unstructured text PII, no image redaction):
 
 ```bash
 go run ./cmd                     # listens on :8080, NLP_WORKER_ADDR unset -> NoOpClient
 PORT=9090 go run ./cmd           # override the port
 ```
 
-To run the Python worker alone:
+To run the Python worker alone (requires the `tesseract` binary installed
+locally — `tesseract-ocr` on Debian/Ubuntu, `brew install tesseract` on
+macOS):
 
 ```bash
 cd python-worker
@@ -137,19 +217,24 @@ Go engine environment variables: `PORT` (default `8080`),
 `PHONE_DEFAULT_REGION` (default `US`, an ISO 3166-1 alpha-2 code used to
 interpret phone numbers with no explicit country code), `NLP_WORKER_ADDR`
 (the Python worker's `host:port`; unset falls back to `NoOpClient`, which
-detects structured PII only).
+detects structured text PII only and leaves images untouched).
 
 Python worker environment variables: `GRPC_PORT` (default `50051`),
 `SPACY_MODEL` (default `en_core_web_sm`), `GRPC_MAX_WORKERS` (default `10`).
 
 ### API
 
-**Redact a `.docx` file** (paragraphs and table cells, formatting preserved):
+**Redact a `.docx` file** (paragraphs, table cells, and embedded images —
+formatting preserved):
 
 ```bash
 curl -X POST localhost:8080/redact/docx \
   -F "file=@input.docx" -o redacted.docx
 ```
+
+Every stage logs progress — file received, redaction started, each gRPC
+call to the worker with entity/region counts and timing, done — so
+`docker compose logs -f` shows exactly where a request is at any moment.
 
 ## Testing
 
@@ -161,10 +246,11 @@ go vet ./...
 go test ./... -race
 ```
 
-Every detector, the faker cache, the processor, `docxio`, the gRPC client,
-and the API handler have unit tests, including concurrency (`-race`)
-coverage for the faker cache and an in-process gRPC server (`bufconn`) for
-the client, so none of it needs a live Python worker to test.
+Every detector, the faker cache, the processor, `docxio` (text and image
+ZIP surgery), the gRPC client (including the dedup/cache layer, proven
+under `-race`), and the API handler have unit tests. The gRPC client tests
+run against an in-process server (`bufconn`), so none of it needs a live
+Python worker to test.
 
 Python worker:
 
@@ -176,8 +262,10 @@ python -m pytest
 ```
 
 Covers the analyzer (entity detection, offset correctness, the
-single-token PERSON precision filter) and the gRPC service layer (via a
-fake analyzer, so it doesn't need a real spaCy model loaded).
+single-token PERSON precision filter), the OCR image redactor (real
+rendered-text images redacted and re-OCR'd to confirm the PII is actually
+gone while surrounding text survives), and the gRPC service layer (via
+fakes, so it doesn't need a real spaCy model or Tesseract for most cases).
 
 ## Regenerating the gRPC contract
 
