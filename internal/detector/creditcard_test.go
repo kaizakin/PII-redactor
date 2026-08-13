@@ -38,8 +38,8 @@ func TestPassesLuhn(t *testing.T) {
 	cases := map[string]bool{
 		"4111111111111111": true,
 		"4111111111111112": false,
-		"79927398713":       true,
-		"79927398710":       false,
+		"79927398713":      true,
+		"79927398710":      false,
 	}
 	for digits, want := range cases {
 		if got := passesLuhn(digits); got != want {
