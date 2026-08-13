@@ -18,18 +18,28 @@ import (
 	"github.com/kaizakin/PII-redactor/internal/processor"
 )
 
+// buildNLPClient connects to the Python NLP worker when cfg.NLPWorkerAddr
+// is configured. Until it is, NoOpClient keeps the unstructured detectors
+// registered but inert, so the engine still runs correctly with
+// structured detection alone.
+func buildNLPClient(cfg config.Config) grpcclient.NLPClient {
+	if cfg.NLPWorkerAddr == "" {
+		log.Print("NLP_WORKER_ADDR not set: unstructured PII (names, companies, addresses) will not be detected")
+		return grpcclient.NoOpClient{}
+	}
+	client, err := grpcclient.Dial(cfg.NLPWorkerAddr)
+	if err != nil {
+		log.Fatalf("failed to connect to NLP worker at %s: %v", cfg.NLPWorkerAddr, err)
+	}
+	log.Printf("connected to NLP worker at %s", cfg.NLPWorkerAddr)
+	return client
+}
+
 // buildDetectors assembles the active set of Detector strategies. This is
 // the one place a new PII type needs to be wired in: implement the
 // detector.Detector interface and append an instance here — nothing else
 // in the pipeline changes.
-func buildDetectors(cfg config.Config) []detector.Detector {
-	// nlpClient talks to the Python NLP worker for unstructured PII
-	// (names, companies, physical addresses). Until cfg.NLPWorkerAddr
-	// points at a running worker, NoOpClient keeps those detectors
-	// registered but inert, so the engine still runs correctly with
-	// structured detection alone.
-	var nlpClient grpcclient.NLPClient = grpcclient.NoOpClient{}
-
+func buildDetectors(cfg config.Config, nlpClient grpcclient.NLPClient) []detector.Detector {
 	return []detector.Detector{
 		detector.NewEmailDetector(),
 		detector.NewPhoneDetector(cfg.PhoneRegion),
@@ -46,7 +56,10 @@ func buildDetectors(cfg config.Config) []detector.Detector {
 func main() {
 	cfg := config.Load()
 
-	handler := api.NewHandler(buildDetectors(cfg), processor.DefaultGenerators())
+	nlpClient := buildNLPClient(cfg)
+	defer nlpClient.Close()
+
+	handler := api.NewHandler(buildDetectors(cfg, nlpClient), processor.DefaultGenerators())
 	router := api.NewRouter(handler)
 
 	srv := &http.Server{
