@@ -1,0 +1,27 @@
+services:
+  python-worker:
+    build: ./python-worker
+    ports:
+      - "50051:50051"
+    healthcheck:
+      # No grpc_health_checking service is wired up (scope of this
+      # project doesn't call for it yet); confirming the port accepts
+      # connections is enough to know the worker finished loading its
+      # spaCy model and is ready for traffic.
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('localhost', 50051), timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 15s
+    restart: unless-stopped
+
+  go-api:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - NLP_WORKER_ADDR=python-worker:50051
+    depends_on:
+      python-worker:
+        condition: service_healthy
+    restart: unless-stopped
