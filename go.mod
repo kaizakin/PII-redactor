@@ -6,6 +6,7 @@ require (
 	github.com/brianvoe/gofakeit/v6 v6.28.0
 	github.com/mmonterroca/docxgo v0.0.0-20251101001959-251788cad489
 	github.com/nyaruka/phonenumbers v1.8.1
+	golang.org/x/sync v0.22.0
 	google.golang.org/grpc v1.83.0
 	google.golang.org/protobuf v1.36.11
 )
