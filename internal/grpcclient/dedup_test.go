@@ -93,6 +93,34 @@ func TestDedupingClientDistinctTextsBothCall(t *testing.T) {
 	}
 }
 
+func TestDedupingClientCachesCompletedCallsAcrossNonOverlappingRequests(t *testing.T) {
+	// This is the case singleflight alone misses: two calls for the same
+	// text that are sequential, not concurrent — e.g. two different runs
+	// in a document carrying identical boilerplate text, or (as measured
+	// against a real 4800-run stress document) the three per-entity-type
+	// calls simply not overlapping because the RPC itself is faster than
+	// the jitter between when each goroutine gets scheduled.
+	inner := &countingClient{started: make(chan struct{}), gate: make(chan struct{})}
+	close(inner.gate)
+	client := NewDedupingClient(inner)
+
+	first, err := client.Analyze(context.Background(), "Rashi Patil works at Acme Corp")
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	second, err := client.Analyze(context.Background(), "Rashi Patil works at Acme Corp")
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+
+	if got := inner.calls.Load(); got != 1 {
+		t.Errorf("expected exactly 1 underlying call, the second should have been a cache hit; got %d", got)
+	}
+	if len(first) != len(second) || first[0].Text != second[0].Text {
+		t.Errorf("expected identical results from cache, got %+v and %+v", first, second)
+	}
+}
+
 func TestDedupingClientClose(t *testing.T) {
 	inner := &countingClient{started: make(chan struct{}), gate: make(chan struct{})}
 	client := NewDedupingClient(inner)
