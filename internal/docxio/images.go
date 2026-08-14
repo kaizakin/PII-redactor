@@ -188,16 +188,27 @@ func readZipEntry(f *zip.File) ([]byte, error) {
 	return io.ReadAll(rc)
 }
 
+// copyZipEntry copies one zip entry verbatim. It opens the source before
+// creating the destination header: zip.Writer.CreateHeader takes ownership
+// of the *FileHeader it's given and mutates it in place (notably setting
+// the data-descriptor flag bit), so calling it on f.FileHeader before f.Open()
+// would make the reader misinterpret the following bytes — the next entry's
+// header, in a zip with no data descriptors — as this entry's trailing CRC,
+// producing a checksum error on a perfectly valid archive. Passing a copy of
+// the header, rather than a pointer into the shared zip.File, keeps the
+// mutation from touching f at all.
 func copyZipEntry(w *zip.Writer, f *zip.File) error {
-	dst, err := w.CreateHeader(&f.FileHeader)
-	if err != nil {
-		return err
-	}
 	src, err := f.Open()
 	if err != nil {
 		return err
 	}
 	defer src.Close()
+
+	fh := f.FileHeader
+	dst, err := w.CreateHeader(&fh)
+	if err != nil {
+		return err
+	}
 	_, err = io.Copy(dst, src)
 	return err
 }
