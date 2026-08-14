@@ -103,17 +103,71 @@ _ADDRESS_PATTERN = Pattern(
     score=0.75,
 )
 
+# Indian address heuristic: unlike the US pattern above, the locality word
+# (Marg, Nagar, Society, ...) rarely follows a leading house number — house
+# numbers show up elsewhere in the address (survey/plot/flat numbers,
+# fractional forms like "11/3"), or not at all. So this one anchors on
+# locality name + type only, in either word order Indian addresses use
+# (type can precede or follow the name: "Sector 18" vs "Shivaji Nagar").
+_INDIAN_LOCALITY_TYPES = (
+    r"Marg|Nagar|Colony|Society|Chowk|Layout|Compound|Village|Taluka|Tehsil|"
+    r"Sector|Block|Peth|Vihar|Puram|Bagh|Gali|Galli|Extension|Enclave|Chawl|"
+    r"Wadi|Gaon|Cross|Circle|Road|Rd"
+)
+
+_INDIAN_LOCALITY_PATTERN = Pattern(
+    name="indian_locality",
+    regex=(
+        rf"\b(?:(?:[A-Z][a-zA-Z.]*\s+){{1,4}}(?:{_INDIAN_LOCALITY_TYPES})\b"
+        rf"|\b(?:{_INDIAN_LOCALITY_TYPES})\s+(?:No\.?\s*)?[\w-]+\b)"
+    ),
+    score=0.7,
+)
+
+# Indian house/plot/survey number forms: "S. No. 245/104", "Plot No. C-15",
+# "Flat No. 12", or a bare fractional lot number like "11/3, 11/4".
+_INDIAN_HOUSE_NUMBER_PATTERN = Pattern(
+    name="indian_house_number",
+    regex=(
+        r"(?i:\b(?:S(?:urvey)?\.?\s*no\.?|Plot\s*no\.?|Flat\s*no\.?|Gat\s*no\.?)"
+        r"\s*[:.]?\s*[\w/-]+\b)"
+    ),
+    score=0.6,
+)
+
+# A locality/city name immediately before a 6-digit Indian PIN code — e.g.
+# "Pune – 411 004" or "Mumbai 400025" — is a strong, low-noise anchor since
+# a 6-digit number split 3+3 or run together right after a place name is
+# almost never anything else.
+_INDIAN_PIN_PATTERN = Pattern(
+    name="indian_pin_code",
+    regex=r"\b[A-Z][a-zA-Z]+\s*[-–]?\s*\d{3}\s?\d{3}\b",
+    score=0.65,
+)
+
 
 class AddressRecognizer(PatternRecognizer):
-    """Finds physical street addresses via number + street-name +
-    street-type heuristics — spaCy has no native address entity to lean
-    on, so this one is regex-only.
+    """Finds physical addresses via regex heuristics — spaCy has no native
+    address entity to lean on, so this one is pattern-only.
+
+    Two distinct addressing conventions are covered: the US "number, street
+    name, street type" form, and the Indian form (locality name + type word
+    in either order, separate house/plot/survey numbers, city + PIN code).
+    Real-world addresses are a poor match for a single regex across
+    countries, so rather than one pattern trying to cover every
+    convention, each gets its own — all scored under the same ADDRESS
+    entity.
     """
 
     def __init__(self):
         super().__init__(
             supported_entity="ADDRESS",
-            patterns=[_ADDRESS_PATTERN],
+            patterns=[
+                _ADDRESS_PATTERN,
+                _INDIAN_LOCALITY_PATTERN,
+                _INDIAN_HOUSE_NUMBER_PATTERN,
+                _INDIAN_PIN_PATTERN,
+            ],
             name="AddressRecognizer",
             global_regex_flags=_CASE_SENSITIVE_FLAGS,
         )

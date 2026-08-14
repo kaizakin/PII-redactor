@@ -21,6 +21,7 @@ services:
       - "8080:8080"
     environment:
       - NLP_WORKER_ADDR=python-worker:50051
+      - PHONE_DEFAULT_REGION=IN
     depends_on:
       python-worker:
         condition: service_healthy

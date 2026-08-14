@@ -31,11 +31,16 @@ SUPPORTED_ENTITIES = ["PERSON", "ORG", "ADDRESS"]
 # already carries misread-character noise.
 OCR_ENTITIES = SUPPORTED_ENTITIES + ["EMAIL_ADDRESS", "PHONE_NUMBER", "CREDIT_CARD", "US_SSN", "IP_ADDRESS"]
 
-# en_core_web_sm keeps startup time and Docker image size small. Swapping
-# in en_core_web_lg (better accuracy, ~400MB) or a transformer-based
-# pipeline is a one-line change here, with no change anywhere else in the
-# system — the "upgrade the model without touching the Go API" story this
-# project is built around.
+# en_core_web_sm keeps startup time and Docker image size small. It does
+# miss or truncate some non-Western names (see the comment on
+# _is_full_name), but en_core_web_lg is not a safe swap: tested against a
+# real prospectus, it caught two names the small model missed, but also
+# dropped "Kushal Subbayya Hegde" (the company's own Chairman/Promoter)
+# outright, in every context tested, and mis-merged "Rashi\nPatil" into
+# "Patil\nEmail" on a labeled-field OCR layout the small model handles
+# correctly. A false negative here is a real leak, not noise, so recall
+# gaps need a fix that doesn't trade one miss for another — not a model
+# swap. Revisit with en_core_web_trf or a name gazetteer instead.
 DEFAULT_MODEL = "en_core_web_sm"
 
 # spaCy's NER tags plenty of things we never asked about (numbers, dates,

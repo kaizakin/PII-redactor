@@ -9,5 +9,7 @@ Pillow==12.3.0
 # direct wheel URL, which pip handles like any other dependency. Swapping
 # this for en_core_web_lg (higher accuracy, larger download) or a
 # transformer-based pipeline is the only change needed to upgrade the NLP
-# model; nothing else in this service or the Go engine changes.
+# model; nothing else in this service or the Go engine changes. But
+# en_core_web_lg is NOT a drop-in accuracy win — see the comment on
+# DEFAULT_MODEL in analyzer.py for a real regression it introduced.
 https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
