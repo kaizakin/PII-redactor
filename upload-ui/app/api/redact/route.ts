@@ -1,15 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isDocxFileName, redactedFilename } from "../../lib/files";
+import { resolveServiceUrl } from "../../lib/url";
 
 export const runtime = "nodejs";
 
 function serviceEndpoint() {
-  const baseUrl = process.env.GO_SERVICE_URL;
-  if (!baseUrl) {
-    throw new Error("GO_SERVICE_URL is not configured");
-  }
-
-  return new URL("/redact/docx", baseUrl).toString();
+  return new URL("/redact/docx", resolveServiceUrl()).toString();
 }
 
 export async function POST(request: NextRequest) {

@@ -36,6 +36,7 @@ import {
 import { ChangeEvent, DragEvent, useEffect, useState } from "react";
 import { formatBytes, getEstimatedProcessingTime, isDocxFileName, redactedFilename } from "./lib/files";
 import { EXAMPLE_DOCUMENT_DIFF, PII_CATEGORIES } from "./lib/categories";
+import { resolveServiceUrl } from "./lib/url";
 
 type UploadState = "idle" | "ready" | "uploading" | "done" | "error";
 type ActiveTab = "detectors" | "diff" | "architecture" | "api";
@@ -94,10 +95,9 @@ export default function Home() {
   const [enableOCRImages, setEnableOCRImages] = useState(true);
   const [enableNER, setEnableNER] = useState(true);
 
-  // Dynamic Gateway URL from env / config
-  const [gatewayUrl, setGatewayUrl] = useState<string>(
-    process.env.NEXT_PUBLIC_GO_SERVICE_URL || "http://localhost:8080"
-  );
+  // Dynamic Gateway URL from env / config (display purposes only; the
+  // actual upload always goes through the same-origin /api/redact proxy).
+  const [gatewayUrl, setGatewayUrl] = useState<string>(resolveServiceUrl());
 
   useEffect(() => {
     fetch("/api/config")

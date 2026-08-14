@@ -11,7 +11,19 @@ import (
 func NewRouter(h *Handler) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/redact/docx", h.RedactDocx)
-	return withRequestLogging(withRecovery(mux))
+	return withCORS(withRequestLogging(withRecovery(mux)))
+}
+
+func withCORS(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
+		w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, Authorization")
+		if r.Method == "OPTIONS" {
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // withRecovery converts a panic reaching the request's main goroutine into
