@@ -16,8 +16,6 @@ export function redactedFilename(originalName: string): string {
     : "redacted.docx";
 }
 
-export function getEstimatedProcessingTime(fileSizeBytes: number): string {
-  if (fileSizeBytes < 500 * 1024) return "10–25s";
-  if (fileSizeBytes < 2 * 1024 * 1024) return "25–45s";
-  return "45–90s";
+export function getEstimatedProcessingTime(_fileSizeBytes?: number): string {
+  return "2–3 mins";
 }

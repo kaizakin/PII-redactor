@@ -6,6 +6,7 @@ import {
   Check,
   CheckCircle2,
   ChevronRight,
+  Clock,
   Code2,
   Copy,
   Cpu,
@@ -44,37 +45,37 @@ const STAGES = [
     id: "unpack",
     title: "Unpacking OpenXML Archive",
     desc: "Extracting XML text runs, document parts, and embedded media",
-    durationMs: 900,
+    durationMs: 15000,
   },
   {
     id: "structured",
     title: "Structured Algorithmic Validation",
     desc: "Scanning SSNs (SSA rules), Cards (Luhn), Phones (libphonenumber), IPs & DOBs",
-    durationMs: 1400,
+    durationMs: 25000,
   },
   {
     id: "ner",
     title: "Presidio & spaCy NER Model",
     desc: "Contextual multi-token detection for Person Names, Orgs & Addresses",
-    durationMs: 1800,
+    durationMs: 35000,
   },
   {
     id: "ocr",
     title: "OCR Visual Masking Pipeline",
     desc: "Extracting image text & applying pixel-level blackout bounding boxes",
-    durationMs: 1400,
+    durationMs: 35000,
   },
   {
     id: "faker",
     title: "Deterministic Pseudonymization",
     desc: "Applying thread-safe consistent synthetic substitutions across pages",
-    durationMs: 1000,
+    durationMs: 25000,
   },
   {
     id: "repack",
     title: "Document Reassembly & Byte Splicing",
     desc: "Rebuilding DOCX with 100% formatting, shading, and table integrity",
-    durationMs: 900,
+    durationMs: 15000,
   },
 ];
 
@@ -176,7 +177,7 @@ export default function Home() {
     setState("ready");
   }
 
-  function onDrop(e: DragEvent<HTMLDivElement>) {
+  function onDrop(e: DragEvent<HTMLElement>) {
     e.preventDefault();
     setIsDragging(false);
     chooseFile(e.dataTransfer.files?.[0] ?? null);
@@ -232,8 +233,11 @@ export default function Home() {
   };
 
   const progressPercent = Math.min(
-    95,
-    Math.round(((currentStageIndex + 1) / STAGES.length) * 100)
+    96,
+    Math.max(
+      4,
+      Math.floor((secondsElapsed / 150) * 100)
+    )
   );
 
   return (
@@ -405,6 +409,14 @@ export default function Home() {
                   </div>
                 </div>
 
+                {/* 2-3 Minutes Notice Banner */}
+                <div className="flex items-center gap-2.5 rounded-xl border border-blue-500/30 bg-blue-500/10 px-3.5 py-2.5 text-xs text-blue-200">
+                  <Clock className="h-4 w-4 shrink-0 text-blue-400" />
+                  <span>
+                    <strong>Estimated time: 2–3 minutes.</strong> Please keep this tab open while the engine executes deep spaCy NER and OCR image filters.
+                  </span>
+                </div>
+
                 {/* Progress Bar */}
                 <div className="h-2 w-full overflow-hidden rounded-full bg-zinc-950">
                   <div
@@ -560,8 +572,9 @@ export default function Home() {
               /* State: Idle / Ready */
               <div className="flex flex-col gap-4">
                 {!file ? (
-                  <div
-                    className={`flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed p-10 text-center transition-all ${
+                  <label
+                    htmlFor="docx-file-input-main"
+                    className={`flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed p-10 text-center transition-all cursor-pointer select-none ${
                       isDragging
                         ? "border-blue-500 bg-blue-500/10"
                         : "border-zinc-800 bg-zinc-950/60 hover:border-zinc-700 hover:bg-zinc-950/90"
@@ -573,8 +586,13 @@ export default function Home() {
                     onDragLeave={() => setIsDragging(false)}
                     onDrop={onDrop}
                     tabIndex={0}
-                    role="button"
-                    aria-label="Upload DOCX"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        document.getElementById("docx-file-input-main")?.click();
+                      }
+                    }}
+                    aria-label="Upload Microsoft Word DOCX document"
                   >
                     <input
                       type="file"
@@ -589,12 +607,9 @@ export default function Home() {
                     </div>
 
                     <div>
-                      <label
-                        htmlFor="docx-file-input-main"
-                        className="cursor-pointer text-sm font-bold text-white hover:underline"
-                      >
+                      <span className="text-sm font-bold text-white hover:underline">
                         Choose a Word document
-                      </label>
+                      </span>
                       <span className="text-sm text-zinc-400"> or drag and drop</span>
                       <p className="mt-1 text-xs text-zinc-500">
                         Supports Microsoft Word (.docx) packages up to 50MB
@@ -612,7 +627,7 @@ export default function Home() {
                         Formatting Intact
                       </span>
                     </div>
-                  </div>
+                  </label>
                 ) : (
                   <>
                     {/* Selected File Card */}
